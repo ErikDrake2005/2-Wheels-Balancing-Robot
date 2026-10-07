@@ -1,18 +1,26 @@
 #include <Arduino.h>
 #include <mpu6050Driver.h>
-// put function declarations here:
-int myFunction(int, int);
+
+// Tạo driver, dùng bus I2C Wire.
+mpu6050Drv imu(Wire);
+
+// Lưu kết quả khởi tạo.
+bool imuSanSang = false;
 
 void setup() {
-  // put your setup code here, to run once:
-  int result = myFunction(2, 3);
+    Serial.begin(115200);
+    delay(1000);
+
+    // Khởi tạo một lần khi ESP32 bắt đầu chạy.
+    imuSanSang = imu.begin();
 }
 
 void loop() {
-  // put your main code here, to run repeatedly:
-}
+    if (imuSanSang) {
+        Serial.println("MPU6050: khoi tao thanh cong");
+    } else {
+        Serial.println("MPU6050: khoi tao that bai");
+    }
 
-// put function definitions here:
-int myFunction(int x, int y) {
-  return x + y;
+    delay(1000); // Chỉ dùng trong chương trình thử này.
 }

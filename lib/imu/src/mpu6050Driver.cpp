@@ -1,5 +1,12 @@
 #include "mpu6050Driver.h"
-
+namespace {
+    int16_t ghepSo16Bit(uint8_t byteCao, uint8_t byteThap) {
+        uint16_t giaTri = (static_cast<uint16_t>(byteCao) << 8) | byteThap;
+        int32_t giaTriCoDau = giaTri;
+        if (giaTri >= 0x8000u) giaTriCoDau -= 65536;
+        return static_cast<int16_t>(giaTriCoDau);
+    }
+}
 mpu6050Drv::mpu6050Drv(TwoWire& bus): _bus(bus){}
 
 bool mpu6050Drv::ghiThanhghi(uint8_t DiaChi, uint8_t GiaTri) {
@@ -70,7 +77,53 @@ bool mpu6050Drv::begin() {
     if (!ghiThanhghi(0x37, 0x00))
         return false;                         // INT active HIGH
     if (!ghiThanhghi(0x38, MPU_NgatIMU ? 0x01 : 0x00))
-        return false;                         // Data-ready interrupt
+        return false;                     // Data-ready interrupt
+    uint8_t cauHinh[4]{};
+    if (docNhieuByte(0x19, cauHinh, sizeof(cauHinh)) != I2C_Status::OK) return false;
+    if (cauHinh[0] != static_cast<uint8_t>(divider) ||
+        cauHinh[1] != MPU_DigitalLowPassFilterConfig ||
+        cauHinh[2] != 0x08 ||   // Gyro ±500 °/s
+        cauHinh[3] != 0x08) {  // Accel ±4 g
+        return false;
+    }
     _trangthaiKhoiTao = true;
+    return true;
+}
+bool mpu6050Drv::read(KhungDuLieuMPU& frame) {
+    // Mỗi lần gọi bắt đầu với một frame không hợp lệ.
+    frame = KhungDuLieuMPU{};
+    if (!_trangthaiKhoiTao) return false;
+    uint8_t buffer[14]{};
+    // Đọc một khối: accel XYZ, nhiệt độ, gyro XYZ.
+    if (docNhieuByte(0x3B, buffer, sizeof(buffer)) != I2C_Status::OK) {
+        frame.trangthai = trangthaiKhungDuLieuMPU::LoiIO;
+        return false;
+    }
+
+    const int16_t ax = ghepSo16Bit(buffer[0],  buffer[1]);
+    const int16_t ay = ghepSo16Bit(buffer[2],  buffer[3]);
+    const int16_t az = ghepSo16Bit(buffer[4],  buffer[5]);
+    const int16_t t  = ghepSo16Bit(buffer[6],  buffer[7]);
+    const int16_t gx = ghepSo16Bit(buffer[8],  buffer[9]);
+    const int16_t gy = ghepSo16Bit(buffer[10], buffer[11]);
+    const int16_t gz = ghepSo16Bit(buffer[12], buffer[13]);
+
+    // Hệ số cho accel ±4 g.
+    constexpr float accelScale = 9.80665f / 8192.0f;
+
+    // Hệ số cho gyro ±500 °/s.
+    constexpr float gyroLsbPerDps = 65.5f;
+    constexpr float degToRad = 0.01745329252f;
+
+    frame.giatocX_mps2 = ax * accelScale;
+    frame.giatocY_mps2 = ay * accelScale;
+    frame.giatocZ_mps2 = az * accelScale;
+    frame.giatocgocX_rps =(gx / gyroLsbPerDps - _gyroBiasDps[0]) * degToRad;
+    frame.giatocgocY_rps =(gy / gyroLsbPerDps - _gyroBiasDps[1]) * degToRad;
+    frame.giatocgocZ_rps =(gz / gyroLsbPerDps - _gyroBiasDps[2]) * degToRad;
+    frame.nhietdoCamBien_C = t / 340.0f + 36.53f;
+    // Chưa triển khai hiệu chuẩn gyro.
+    frame.trangthaiCalib = false;
+    frame.trangthai = trangthaiKhungDuLieuMPU::HopLe;
     return true;
 }

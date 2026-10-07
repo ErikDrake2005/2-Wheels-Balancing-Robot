@@ -29,6 +29,5 @@ private:
     bool _trangthaiKhoiTao = false;
     bool ghiThanhghi(uint8_t DiaChi, uint8_t GiaTri);
     I2C_Status docNhieuByte(uint8_t diachiBatDau, uint8_t* duLieu, size_t soByte);
-
 };
 #endif

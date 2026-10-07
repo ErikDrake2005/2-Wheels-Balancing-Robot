@@ -12,24 +12,31 @@ enum class trangthaiKhungDuLieuMPU : uint8_t {
 };
 
 struct KhungDuLieuMPU {
+    // Thời điểm của mẫu, đơn vị microsecond.
     uint64_t ThoiDiemLayMau_us = 0;
-    uint32_t SoMauLayDuoc = 0;
-    float KhoangThoiGianLayMau_dt = 0.0f;
 
+    // Số thứ tự, tăng sau mỗi lần đọc thành công.
+    uint32_t SoMauLayDuoc = 0;
+
+    // Gia tốc đo bởi accelerometer, đơn vị m/s².
+    // Dữ liệu này vẫn bao gồm ảnh hưởng của trọng lực.
     float giatocX_mps2 = 0.0f;
     float giatocY_mps2 = 0.0f;
     float giatocZ_mps2 = 0.0f;
 
-    float giatocgocX_rps = 0.0f;
-    float giatocgocY_rps = 0.0f;
-    float giatocgocZ_rps = 0.0f;
+    // Tốc độ góc đo bởi gyro, đơn vị rad/s.
+    float tocdoGocX_radps = 0.0f;
+    float tocdoGocY_radps = 0.0f;
+    float tocdoGocZ_radps = 0.0f;
 
+    // Nhiệt độ của cảm biến, đơn vị °C.
     float nhietdoCamBien_C = 0.0f;
-    bool trangthaiCalib = false;
-    bool SENSOR_OK = false;
 
-    trangthaiKhungDuLieuMPU trangthai =
-        trangthaiKhungDuLieuMPU::KhongHopLe;
+    // Gyro đã được trừ bias từ hiệu chuẩn hay chưa.
+    bool trangthaiCalib = false;
+
+    // Mặc định chưa có mẫu sử dụng được.
+    trangthaiKhungDuLieuMPU trangthai = trangthaiKhungDuLieuMPU::KhongHopLe;
 };
 
 #endif
