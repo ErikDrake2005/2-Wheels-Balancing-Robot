@@ -40,6 +40,9 @@ I2C_Status mpu6050Drv::docNhieuByte(uint8_t diachiBatDau, uint8_t* duLieu, size_
 
 bool mpu6050Drv::begin() {
     _trangthaiKhoiTao = false;
+    _trangthaiKhoiTao = false;
+    _daHieuChinhGyro = false;
+    for (float& bias : _gyroBiasDps) bias = 0.0f;
     if (MPU_AccelRangeChoPhep_g != 4 ||
         MPU_GyroRangeChoPhep_dps != 500) {
         return false;
@@ -48,12 +51,12 @@ bool mpu6050Drv::begin() {
         MPU_DigitalLowPassFilterConfig > 6) {
         return false;
     }
-    const uint32_t sampleHz = MPU_thoigianLayMau_Hz;
-    if (sampleHz == 0 || sampleHz > 1000 ||
-        1000 % sampleHz != 0) {
+    const uint32_t thoigianLayMau_Hz = MPU_thoigianLayMau_Hz;
+    if (thoigianLayMau_Hz == 0 || thoigianLayMau_Hz > 1000 ||
+        1000 % thoigianLayMau_Hz != 0) {
         return false;
     }
-    const uint32_t divider = 1000 / sampleHz - 1;
+    const uint32_t divider = 1000 / thoigianLayMau_Hz - 1;
     if (divider > 255) {
         return false;
     }
@@ -74,8 +77,8 @@ bool mpu6050Drv::begin() {
         return false;                         // Gyro ±500 °/s
     if (!ghiThanhghi(0x1C, 0x08))
         return false;                         // Accel ±4 g
-    if (!ghiThanhghi(0x37, 0x00))
-        return false;                         // INT active HIGH
+    const uint8_t intPinConfig = MPU_ActiveSignal ? 0x00 : 0x80;
+    if (!ghiThanhghi(0x37, intPinConfig)) return false;                   // INT active HIGH
     if (!ghiThanhghi(0x38, MPU_NgatIMU ? 0x01 : 0x00))
         return false;                     // Data-ready interrupt
     uint8_t cauHinh[4]{};
@@ -118,12 +121,68 @@ bool mpu6050Drv::read(KhungDuLieuMPU& frame) {
     frame.giatocX_mps2 = ax * accelScale;
     frame.giatocY_mps2 = ay * accelScale;
     frame.giatocZ_mps2 = az * accelScale;
-    frame.giatocgocX_rps =(gx / gyroLsbPerDps - _gyroBiasDps[0]) * degToRad;
-    frame.giatocgocY_rps =(gy / gyroLsbPerDps - _gyroBiasDps[1]) * degToRad;
-    frame.giatocgocZ_rps =(gz / gyroLsbPerDps - _gyroBiasDps[2]) * degToRad;
+    frame.tocdoGocX_radps =(gx / gyroLsbPerDps - _gyroBiasDps[0]) * degToRad;
+    frame.tocdoGocY_radps =(gy / gyroLsbPerDps - _gyroBiasDps[1]) * degToRad;
+    frame.tocdoGocZ_radps =(gz / gyroLsbPerDps - _gyroBiasDps[2]) * degToRad;
     frame.nhietdoCamBien_C = t / 340.0f + 36.53f;
     // Chưa triển khai hiệu chuẩn gyro.
-    frame.trangthaiCalib = false;
+    frame.trangthaiCalib = _daHieuChinhGyro;
     frame.trangthai = trangthaiKhungDuLieuMPU::HopLe;
+    return true;
+}
+bool mpu6050Drv::HieuChinhGyro(uint16_t Somau) {
+    // Cần ít nhất 2 mẫu để đánh giá độ biến thiên.
+    if (!_trangthaiKhoiTao || Somau < 2) return false;
+    _daHieuChinhGyro = false;
+    // Tính thời gian dự kiến từ số mẫu và tần số MPU.
+    // Thêm 1 giây dự phòng để hàm không chờ vô hạn
+    // khi cảm biến không tạo thêm dữ liệu.
+    const uint32_t thoigianLayMau_Hz = MPU_thoigianLayMau_Hz;
+    const uint32_t timeoutMs =(static_cast<uint32_t>(Somau) * 1000u + thoigianLayMau_Hz - 1u)/thoigianLayMau_Hz + 1000u;
+    const uint32_t batDauMs = millis();
+    // mean: trung bình gyro theo độ/giây.
+    // m2: tổng dùng để tính phương sai bằng thuật toán Welford.
+    float mean[3]{};
+    float m2[3]{};
+    uint16_t daThu = 0;
+    // Đọc INT_STATUS để xóa sự kiện đã có trước khi hiệu chuẩn.
+    uint8_t intStatus = 0;
+    if (docNhieuByte(0x3A, &intStatus, 1) != I2C_Status::OK) return false;
+    while (daThu < Somau) {
+        if (static_cast<uint32_t>(millis() - batDauMs) >= timeoutMs) return false;
+        // Bit 0 của INT_STATUS báo có dữ liệu mới.
+        // Đọc thanh ghi này cũng xóa trạng thái ngắt.
+        if (docNhieuByte(0x3A, &intStatus, 1) != I2C_Status::OK) return false;
+        if ((intStatus & 0x01u) == 0) {
+            delay(1);
+            continue;
+        }
+        // Khi hiệu chuẩn chỉ cần 6 byte gyro từ GYRO_XOUT_H.
+        uint8_t buffer[6]{};
+
+        if (docNhieuByte(0x43, buffer, sizeof(buffer)) != I2C_Status::OK) return false;
+        const float gyroDps[3] = {
+            ghepSo16Bit(buffer[0], buffer[1]) / 65.5f,
+            ghepSo16Bit(buffer[2], buffer[3]) / 65.5f,
+            ghepSo16Bit(buffer[4], buffer[5]) / 65.5f
+        };
+        ++daThu;
+        // Cập nhật trung bình và độ biến thiên từng trục.
+        for (uint8_t axis = 0; axis < 3; ++axis) {
+            const float delta = gyroDps[axis] - mean[axis];
+            mean[axis] += delta / static_cast<float>(daThu);
+            const float deltaSau = gyroDps[axis] - mean[axis];
+            m2[axis] += delta * deltaSau;
+        }
+    }
+    const float varianceLimit =MPU_GYRO_CALIB_MAX_STD_DPS * MPU_GYRO_CALIB_MAX_STD_DPS;
+    // Nếu gyro biến động lớn, không chấp nhận bias vừa đo.
+    for (uint8_t axis = 0; axis < 3; ++axis) {
+        const float variance = m2[axis] / static_cast<float>(daThu - 1);
+        if (variance > varianceLimit) return false;
+    }
+    // Chỉ ghi bias sau khi cả 3 trục đều vượt qua kiểm tra.
+    for (uint8_t axis = 0; axis < 3; ++axis) _gyroBiasDps[axis] = mean[axis];
+    _daHieuChinhGyro = true;
     return true;
 }

@@ -21,12 +21,16 @@ public:
     explicit mpu6050Drv(TwoWire& bus);
     bool begin();
     bool read(KhungDuLieuMPU& KhungDuLieu);
+    // Chỉ gọi trước khi cân bằng, khi xe đứng yên và motor đã disable.
+    // Hàm thu nhiều mẫu nên có thể mất vài giây.
+    // Không gọi từ ISR hoặc trong vòng PID.
     bool HieuChinhGyro(uint16_t Somau);
 private:
 
     TwoWire& _bus;
     float _gyroBiasDps[3]={0.0f, 0.0f, 0.0f};
     bool _trangthaiKhoiTao = false;
+    bool _daHieuChinhGyro = false;
     bool ghiThanhghi(uint8_t DiaChi, uint8_t GiaTri);
     I2C_Status docNhieuByte(uint8_t diachiBatDau, uint8_t* duLieu, size_t soByte);
 };
