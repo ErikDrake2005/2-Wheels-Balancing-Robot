@@ -5,7 +5,7 @@
 
 #define PIN_SDA_MPU6050 4
 #define PIN_SCL_MPU6050 3
-#define PIN_PIN_MPU6050 7
+#define PIN_INT_MPU6050 7
 
 #define PIN_DirL 9
 #define PIN_StepL 8
