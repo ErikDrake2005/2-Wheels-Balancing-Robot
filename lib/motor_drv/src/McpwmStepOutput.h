@@ -28,8 +28,12 @@ public:
     // Có thể gọi nhiều lần.
     // Không dùng riêng hàm này để đảm bảo đảo chiều đúng timing;
     // trình tự DIR hold/setup sẽ thuộc lớp MKS.
-    void stop();
-
+    bool stop();
+    McpwmStepOutput() = default;
+    // Mỗi đối tượng sở hữu riêng tài nguyên MCPWM.
+    // Ngăn sao chép để tránh hai đối tượng cùng quản lý một timer.
+    McpwmStepOutput(const McpwmStepOutput&) = delete;
+    McpwmStepOutput& operator=(const McpwmStepOutput&) = delete;
 private:
     // Handle là biến tham chiếu tới tài nguyên phần cứng
     // do driver MCPWM tạo khi begin() chạy.
@@ -40,15 +44,14 @@ private:
     bool _initialized = false;
     uint32_t _pulseHighUs = 0;
     uint32_t _minLowUs = 0;
-
-    // Độ phân giải dự kiến: 1 tick = 1 microsecond.
-    // Đây là clock của timer MCPWM, không phải CPU clock.
     uint32_t _dophangiaiHz = 1000000;
-    McpwmStepOutput() = default;
-    // Mỗi đối tượng sở hữu riêng tài nguyên MCPWM.
-    // Ngăn sao chép để tránh hai đối tượng cùng quản lý một timer.
-    McpwmStepOutput(const McpwmStepOutput&) = delete;
-    McpwmStepOutput& operator=(const McpwmStepOutput&) = delete;
+    // Timer đã được gửi lệnh bắt đầu đếm hay chưa.
+    bool _timerStarted = false;
+    // STEP đang bị giữ LOW hay đang phát xung.
+    bool _outputStopped = true;
+    // Chu kỳ gần nhất được yêu cầu, dùng tránh ghi lặp.
+    uint32_t _periodTicks = 0;
+
 };
 
 #endif

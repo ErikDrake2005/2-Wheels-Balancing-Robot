@@ -40,7 +40,6 @@ I2C_Status mpu6050Drv::docNhieuByte(uint8_t diachiBatDau, uint8_t* duLieu, size_
 
 bool mpu6050Drv::begin() {
     _trangthaiKhoiTao = false;
-    _trangthaiKhoiTao = false;
     _daHieuChinhGyro = false;
     for (float& bias : _gyroBiasDps) bias = 0.0f;
     if (MPU_AccelRangeChoPhep_g != 4 ||
@@ -64,11 +63,11 @@ bool mpu6050Drv::begin() {
         return false;
     }
     _bus.setClock(MPU_CLK_MSR);
-    _bus.setTimeOut(2); // Timeout I2C thử ban đầu, đơn vị ms
+    _bus.setTimeOut(MPU_I2C_TIMEOUT_MS); // Timeout I2C thử ban đầu, đơn vị ms
     uint8_t id = 0;
     if (docNhieuByte(0x75, &id, 1) != I2C_Status::OK || id != 0x68) return false;
     if (!ghiThanhghi(0x6B, 0x01)) return false; // Đánh thức MPU
-    delay(100);                               // Chỉ lúc khởi tạo
+    delay(MPU_STARTUP_WAIT_MS);                               // Chỉ lúc khởi tạo
     if (!ghiThanhghi(0x1A, MPU_DigitalLowPassFilterConfig))
         return false;                         // DLPF
     if (!ghiThanhghi(0x19, static_cast<uint8_t>(divider)))
@@ -134,14 +133,16 @@ bool mpu6050Drv::HieuChinhGyro(uint16_t Somau) {
     // Cần ít nhất 2 mẫu để đánh giá độ biến thiên.
     if (!_trangthaiKhoiTao || Somau < 2) return false;
     _daHieuChinhGyro = false;
-    // Tính thời gian dự kiến từ số mẫu và tần số MPU.
-    // Thêm 1 giây dự phòng để hàm không chờ vô hạn
-    // khi cảm biến không tạo thêm dữ liệu.
+    // Tần số lấy mẫu MPU, đơn vị mẫu/giây.
     const uint32_t thoigianLayMau_Hz = MPU_thoigianLayMau_Hz;
-    const uint32_t timeoutMs =(static_cast<uint32_t>(Somau) * 1000u + thoigianLayMau_Hz - 1u)/thoigianLayMau_Hz + 1000u;
+    // Thời gian dự kiến thu đủ mẫu, làm tròn lên millisecond.
+    const uint32_t thoiGianThuMauMs = (static_cast<uint32_t>(Somau) * 1000u + thoigianLayMau_Hz - 1u) / thoigianLayMau_Hz;
+    // Cộng thời gian dự phòng từ Config.
+    const uint32_t timeoutMs = thoiGianThuMauMs + MPU_CALIB_TIMEOUT_MARGIN_MS;
+    // Thời điểm bắt đầu để kiểm tra timeout trong vòng while.
     const uint32_t batDauMs = millis();
     // mean: trung bình gyro theo độ/giây.
-    // m2: tổng dùng để tính phương sai bằng thuật toán Welford.
+    // m2: giá trị tích lũy để tính phương sai.
     float mean[3]{};
     float m2[3]{};
     uint16_t daThu = 0;

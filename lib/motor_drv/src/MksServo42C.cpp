@@ -2,14 +2,19 @@
 #include <Arduino.h>
 #include "config/PinConfig.h"
 #include "config/MotorConfig.h"
+#include "driver/gpio.h"
 
 bool MksServo42CPair::begin() {
     _initialized = false;
     _enabled = false;
-    // Đặt mức disable trước khi chuyển EN thành OUTPUT.
-    digitalWrite(PIN_EnMotor,MOTOR_EN_ACTIVE_HIGH ? LOW : HIGH);
+    const gpio_num_t enPin = static_cast<gpio_num_t>(PIN_EnMotor);
+    const int disableLevel = MOTOR_EN_ACTIVE_HIGH ? 0 : 1;
+    // Ghi trực tiếp mức đầu ra trước khi bật chế độ OUTPUT.
+    if (gpio_set_level(enPin, disableLevel) != ESP_OK) return false;
+    // Đăng ký chân với Arduino để các digitalWrite() sau hoạt động.
     pinMode(PIN_EnMotor, OUTPUT);
-
+    // Đặt lại mức disable sau khi chân đã được cấu hình.
+    digitalWrite(PIN_EnMotor, disableLevel ? HIGH : LOW);
     // Chuẩn bị STEP ở LOW, chưa phát xung.
     digitalWrite(PIN_StepL, LOW);
     digitalWrite(PIN_StepR, LOW);
