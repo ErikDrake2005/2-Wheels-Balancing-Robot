@@ -6,7 +6,9 @@ public:
     bool begin();
     void enable();
     void disable();
-    bool isEnabled() const return _enabled;
+    bool isEnabled() const {
+        return _enabled;
+    }
 private:
     bool _initialized = false;
     bool _enabled = false;

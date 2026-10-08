@@ -20,6 +20,24 @@ class mpu6050Drv {
 public:
     explicit mpu6050Drv(TwoWire& bus);
     bool begin();
+    // Đọc một mẫu accel, gyro và nhiệt độ.
+    //
+    // Điều kiện gọi:
+    // - Chỉ một task được sử dụng driver tại một thời điểm.
+    // - Không gọi từ ISR.
+    //
+    // Kết quả:
+    // - true: đọc đủ dữ liệu; frame.trangthai = HopLe.
+    // - false: mẫu không hợp lệ; bên gọi phải bỏ mẫu.
+    //
+    // Quy ước dữ liệu:
+    // - Accel: m/s², vẫn bao gồm ảnh hưởng của trọng lực.
+    // - Gyro: rad/s, theo trục MPU.
+    // - Chưa ánh xạ dữ liệu sang hệ trục của xe.
+    //
+    // Trách nhiệm của tầng gọi:
+    // - Điền timestamp và số thứ tự mẫu sau khi đọc thành công.
+    // - Kiểm tra tuổi dữ liệu trước khi đưa vào bộ điều khiển.
     bool read(KhungDuLieuMPU& KhungDuLieu);
     // Chỉ gọi trước khi cân bằng, khi xe đứng yên và motor đã disable.
     // Hàm thu nhiều mẫu nên có thể mất vài giây.
