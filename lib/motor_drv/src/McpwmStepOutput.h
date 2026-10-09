@@ -1,57 +1,64 @@
 #ifndef MCPWM_STEP_OUTPUT_H
 #define MCPWM_STEP_OUTPUT_H
-
 #include <cstdint>
+#include "esp_attr.h"
 #include "driver/mcpwm_prelude.h"
+#include "freertos/FreeRTOS.h"
 
+// ĐỀ XUẤT V2. Giữ tên begin/setFrequency/stop để đối chiếu với bản hiện tại.
+// Một task gọi API của một đối tượng; callback on_stop chỉ đổi cờ có bảo vệ.
+// Đối tượng phải tồn tại suốt thời gian phần cứng/callback đang hoạt động.
 class McpwmStepOutput {
 public:
-    // Chuẩn bị phần cứng cho MỘT chân STEP.
-    //
-    // stepPin: GPIO nối STEP của MKS.
-    // pulseHighUs: độ rộng phần HIGH của mỗi xung.
-    // minLowUs: thời gian LOW tối thiểu giữa các xung.
-    //
-    // Sau khi thành công, đầu ra vẫn LOW, chưa phát xung.
-    bool begin(int stepPin, uint32_t pulseHighUs, uint32_t minLowUs);
-
-    // Đặt tần số xung, đơn vị Hz = xung/giây.
-    //
-    // frequencyHz > 0: yêu cầu phát xung.
-    // frequencyHz = 0: yêu cầu ngừng phát xung.
-    // Từ chối giá trị âm, NaN hoặc vượt khả năng phần cứng.
-    //
-    // Chiều quay DIR do MksServo42CPair quản lý.
-    bool setFrequency(float frequencyHz);
-
-    // Ép STEP về LOW để ngừng phát ngay.
-    // Có thể gọi nhiều lần.
-    // Không dùng riêng hàm này để đảm bảo đảo chiều đúng timing;
-    // trình tự DIR hold/setup sẽ thuộc lớp MKS.
-    bool stop();
     McpwmStepOutput() = default;
-    // Mỗi đối tượng sở hữu riêng tài nguyên MCPWM.
-    // Ngăn sao chép để tránh hai đối tượng cùng quản lý một timer.
     McpwmStepOutput(const McpwmStepOutput&) = delete;
     McpwmStepOutput& operator=(const McpwmStepOutput&) = delete;
+
+    bool begin(int stepPin, uint32_t pulseHighUs, uint32_t minLowUs);
+    bool setFrequency(float frequencyHz);
+
+    // Bình thường: ngăn cạnh STEP lên tiếp theo, để HIGH hiện tại kết thúc.
+    // Không chờ trong hàm. Kiểm tra isPauseReady() trước khi đổi DIR/phát lại.
+    bool pauseAfterPulse();
+    bool isPauseReady() const;
+
+    // Phát đúng một xung, dùng cho lệnh nhỏ hơn dải xung liên tục.
+    // Generator HIGH ở sync, LOW ở comparator; EMPTY được giữ LOW.
+    // Timer dừng ở cuối chu kỳ. on_stop chỉ chạy khi dừng, không ở mọi STEP.
+    bool emitOnePulse();
+
+    // Khẩn cấp: ép LOW tức thì, có thể cắt xung HIGH. Lớp MKS tắt EN trước.
+    bool stop();
+    bool supportsFrequency(float hz) const;
+    double actualFrequencyHz() const;
+
 private:
-    // Handle là biến tham chiếu tới tài nguyên phần cứng
-    // do driver MCPWM tạo khi begin() chạy.
+    static bool IRAM_ATTR onTimerStop(
+        mcpwm_timer_handle_t, const mcpwm_timer_event_data_t*, void* context);
+    bool setEmptyAction(mcpwm_generator_action_t action);
+    bool prepareStart(uint32_t periodTicks);
+    bool cleanupInit();
+    bool oneShotBusy() const;
+    void setOneShotBusy(bool busy);
+
     mcpwm_timer_handle_t _timer = nullptr;
     mcpwm_oper_handle_t _operator = nullptr;
     mcpwm_cmpr_handle_t _comparator = nullptr;
     mcpwm_gen_handle_t _generator = nullptr;
+    mcpwm_sync_handle_t _sync = nullptr;
+
+    // Bảo vệ duy nhất cờ giao tiếp giữa ISR và task; không giữ khóa khi gọi MCPWM.
+    mutable portMUX_TYPE _pulseMux = portMUX_INITIALIZER_UNLOCKED;
+    bool _oneShotBusy = false;
     bool _initialized = false;
-    uint32_t _pulseHighUs = 0;
-    uint32_t _minLowUs = 0;
-    uint32_t _dophangiaiHz = 1000000;
-    // Timer đã được gửi lệnh bắt đầu đếm hay chưa.
-    bool _timerStarted = false;
-    // STEP đang bị giữ LOW hay đang phát xung.
-    bool _outputStopped = true;
-    // Chu kỳ gần nhất được yêu cầu, dùng tránh ghi lặp.
+    bool _continuous = false;
+    bool _pauseRequested = true;
+    bool _timerEnabled = false;
+    uint32_t _dophangiaiHz = 0;
+    uint32_t _highTicks = 0;
+    uint32_t _lowTicks = 0;
     uint32_t _periodTicks = 0;
-
+    uint32_t _quietWaitUs = 0;
+    uint64_t _pauseReadyAtUs = 0;
 };
-
 #endif

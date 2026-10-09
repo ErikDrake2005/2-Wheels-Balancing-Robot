@@ -7,7 +7,7 @@
 #define MPU_thoigianLayMau_Hz 200
 #define MPU_AccelRangeChoPhep_g 4
 #define MPU_GyroRangeChoPhep_dps 500
-#define MPU_DigitalLowPassFilterConfig 3
+#define MPU_DigitalLowPassFilterConfig 2
 #define MPU_NgatIMU true
 #define MPU_ActiveSignal true // true: active HIGH; false: active LOW
 #define MPU_laymauCalib 500
