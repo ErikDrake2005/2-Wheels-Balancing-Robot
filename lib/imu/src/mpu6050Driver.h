@@ -27,7 +27,7 @@ public:
     // - Không gọi từ ISR.
     //
     // Kết quả:
-    // - true: đọc đủ dữ liệu; frame.trangthai = HopLe.
+    // - true: đọc đủ dữ liệu; frame.trangThai = HopLe.
     // - false: mẫu không hợp lệ; bên gọi phải bỏ mẫu.
     //
     // Quy ước dữ liệu:
@@ -38,18 +38,18 @@ public:
     // Trách nhiệm của tầng gọi:
     // - Điền timestamp và số thứ tự mẫu sau khi đọc thành công.
     // - Kiểm tra tuổi dữ liệu trước khi đưa vào bộ điều khiển.
-    bool read(KhungDuLieuMPU& KhungDuLieu);
+    bool read(KhungDuLieuMPU& khungDuLieu);
     // Chỉ gọi trước khi cân bằng, khi xe đứng yên và motor đã disable.
     // Hàm thu nhiều mẫu nên có thể mất vài giây.
     // Không gọi từ ISR hoặc trong vòng PID.
-    bool HieuChinhGyro(uint16_t Somau);
+    bool hieuChinhConQuay(uint16_t soMau);
 private:
 
     TwoWire& _bus;
-    float _gyroBiasDps[3]={0.0f, 0.0f, 0.0f};
-    bool _trangthaiKhoiTao = false;
-    bool _daHieuChinhGyro = false;
-    bool ghiThanhghi(uint8_t DiaChi, uint8_t GiaTri);
+    float _doLechConQuay_dps[3]={0.0f, 0.0f, 0.0f};
+    bool _daKhoiTao = false;
+    bool _daHieuChinhConQuay = false;
+    bool ghiThanhGhi(uint8_t diaChi, uint8_t giaTri);
     I2C_Status docNhieuByte(uint8_t diachiBatDau, uint8_t* duLieu, size_t soByte);
 };
 #endif

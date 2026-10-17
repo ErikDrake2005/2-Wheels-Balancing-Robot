@@ -3,14 +3,14 @@
 
 // Định nghĩa chân cắm kết nối MicroControler
 
-#define PIN_SDA_MPU6050 4
-#define PIN_SCL_MPU6050 3
-#define PIN_INT_MPU6050 7
+#define chanSdaMpu 4
+#define chanSclMpu 3
+#define chanNgatMpu 7
 
-#define PIN_DirL 9
-#define PIN_StepL 8
-#define PIN_DirR 5
-#define PIN_StepR 6
-#define PIN_EnMotor 2  
+#define chanDirTrai 9
+#define chanStepTrai 8
+#define chanDirPhai 5
+#define chanStepPhai 6
+#define chanBatMotor 2
 
 #endif

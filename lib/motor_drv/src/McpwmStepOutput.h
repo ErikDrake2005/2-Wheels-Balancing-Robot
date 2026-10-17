@@ -49,16 +49,16 @@ private:
 
     // Bảo vệ duy nhất cờ giao tiếp giữa ISR và task; không giữ khóa khi gọi MCPWM.
     mutable portMUX_TYPE _pulseMux = portMUX_INITIALIZER_UNLOCKED;
-    bool _oneShotBusy = false;
-    bool _initialized = false;
-    bool _continuous = false;
-    bool _pauseRequested = true;
-    bool _timerEnabled = false;
+    bool _dangPhatMotXung = false;
+    bool _daKhoiTao = false;
+    bool _dangChayLienTuc = false;
+    bool _daYeuCauTamDung = true;
+    bool _daBatBoDem = false;
     uint32_t _dophangiaiHz = 0;
-    uint32_t _highTicks = 0;
-    uint32_t _lowTicks = 0;
-    uint32_t _periodTicks = 0;
-    uint32_t _quietWaitUs = 0;
-    uint64_t _pauseReadyAtUs = 0;
+    uint32_t _soTickMucCao = 0;
+    uint32_t _soTickMucThap = 0;
+    uint32_t _soTickChuKy = 0;
+    uint32_t _thoiGianChoYen_us = 0;
+    uint64_t _tamDungSanSang_us = 0;
 };
 #endif
