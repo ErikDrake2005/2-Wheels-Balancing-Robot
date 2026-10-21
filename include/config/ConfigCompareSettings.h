@@ -4,7 +4,7 @@
 
 // Đặt file này vào include/config/ConfigCompareSettings.h khi tự dùng main mẫu.
 // Giữ false cho đến khi đã xác nhận các mức điện và đo STEP.
-constexpr bool choPhepChayMotorThu = true;
+constexpr bool choPhepChayMotorThu = false;
 
 // Hai phép thử: xung thưa và xung liên tục, đơn vị steps/s.
 constexpr float tanSoXungThuaThu_hz = 200.0f;
@@ -22,7 +22,7 @@ constexpr uint32_t chuKyLamMoiLenhThu_us = 5000;
 constexpr uint32_t tuoiDuLieuMpuToiDa_us = 20000;
 constexpr uint32_t chuKyBaoCao_ms = 1000;
 constexpr uint32_t tocDoSerialThu_baud = 115200;
-constexpr uint32_t thoiGianKhoiDongConsole_ms = 500;
+constexpr uint32_t thoiGianKhoiDongConsole_ms = 5000;
 constexpr uint32_t kichThuocNganXepTaskMpu_byte = 4096;
 constexpr uint32_t kichThuocNganXepTaskMotor_byte = 4096;
 constexpr unsigned uuTienTaskMpu = 3;

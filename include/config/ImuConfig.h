@@ -3,7 +3,7 @@
 #include <cstdint>
 // Vận hành và diễn giải MPU6050
 #define diaChiI2cMpu 0x68
-#define tanSoI2cMpu_hz 400000
+#define tanSoI2cMpu_hz 100000
 #define tanSoLayMauMpu_hz 200
 #define phamViGiaTocMpu_g 4
 #define phamViTocDoGocMpu_dps 500

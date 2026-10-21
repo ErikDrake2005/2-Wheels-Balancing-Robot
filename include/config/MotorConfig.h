@@ -8,7 +8,7 @@ constexpr uint16_t soViBuocDauVaoMks = 32;
 
 // MẪU CẤU HÌNH V2: các giá trị tín hiệu dưới đây cần đối chiếu MKS thực tế.
 // begin() vẫn chuẩn bị phần cứng; enable() chỉ được chấp nhận khi true.
-constexpr bool daXacNhanCauHinhPhanCungMotor = true;
+constexpr bool daXacNhanCauHinhPhanCungMotor = false;
 constexpr bool mucBatMotorCao = false; // Phải khớp menu EN = L.
 constexpr bool mucDirTienBanhTraiCao = true;  // Chưa xác nhận chiều.
 constexpr bool mucDirTienBanhPhaiCao = false; // Chưa xác nhận chiều.
