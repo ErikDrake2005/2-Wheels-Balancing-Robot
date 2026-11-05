@@ -1,0 +1,83 @@
+{
+  "ngay": "2026-11-05",
+  "pham_vi": "so_do_chan_va_ui_calib_giu_pitch_nguoi_giu",
+  "cam_bien": "ICM20602",
+  "motor_1": "phai",
+  "motor_2": "trai",
+  "gpio": {
+    "sda": 10,
+    "scl": 11,
+    "sa0": 8,
+    "cs": 9,
+    "int": 7,
+    "dir_trai": 5,
+    "step_trai": 6,
+    "dir_phai": 12,
+    "step_phai": 13,
+    "en": 2,
+    "nut": 3,
+    "rgb_chua_xac_minh": 48
+  },
+  "build": {
+    "moi_truong": "lolin_s3_mini",
+    "ket_qua": "PASS",
+    "ram_bytes": 57044,
+    "flash_app_bytes": 469974,
+    "firmware_sha256": "0ea4789884fe75a7cfe96fe1796a0fd4d519e32034f85906aa58c80fa9d7f64a"
+  },
+  "native_tests": {
+    "ket_qua": "PASS",
+    "so_nhom": 5,
+    "control": 14507,
+    "watchdog": 19,
+    "loc_di_chuyen": 169,
+    "he_truc_vector": 3114,
+    "calib_roll": 25
+  },
+  "hoi_quy_pitch": {
+    "pitch_dau_deg": [
+      -6,
+      6
+    ],
+    "roll_tham_chieu_deg": [
+      -4,
+      0,
+      4
+    ],
+    "giu_pitch_dau_va_truc_doc": true
+  },
+  "lien_ket_markdown": {
+    "so_da_kiem": 109,
+    "so_thieu": 0
+  },
+  "thu_tren_xe": false,
+  "da_xac_nhan_cau_hinh_phan_cung_motor": false,
+  "calib_luu_nvs": false,
+  "tinh_toan_goc": {
+    "z_trong_tam_m": 0.025,
+    "pitch_tham_chieu_toi_da_deg": 8.626926558678639,
+    "pitch_hai_moc_toi_da_deg": 9.98275475777761,
+    "vi_du_khong_phai_so_do_xe": [
+      {
+        "x_m": -0.002,
+        "goc_can_bang_deg": 4.573921259900861
+      },
+      {
+        "x_m": -0.001,
+        "goc_can_bang_deg": 2.290610042638529
+      },
+      {
+        "x_m": 0,
+        "goc_can_bang_deg": -0.0
+      },
+      {
+        "x_m": 0.001,
+        "goc_can_bang_deg": -2.290610042638529
+      },
+      {
+        "x_m": 0.002,
+        "goc_can_bang_deg": -4.573921259900861
+      }
+    ]
+  }
+}

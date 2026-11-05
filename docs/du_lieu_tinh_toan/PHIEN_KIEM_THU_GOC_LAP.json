@@ -1,0 +1,18 @@
+{
+  "ngay": "2026-11-05",
+  "cam_bien": "ICM20602",
+  "goc_lap_da_do_tren_xe": false,
+  "cau_hinh_lap": "identity_chua_co_so_do_goc_lap",
+  "tests_cpp": {
+    "nen": 14507,
+    "watchdog": 19,
+    "loc_di_chuyen": 169,
+    "he_truc_vector": 3114
+  },
+  "tests_python": 5,
+  "build": "SUCCESS",
+  "ram_bytes": 57044,
+  "flash_app_bytes": 466158,
+  "firmware_sha256": "96f23a9b43be6cb23c39b53b3afaa1fb693cf36d15c1585f1a67c737e8c780ed",
+  "docs_links": "PASS"
+}

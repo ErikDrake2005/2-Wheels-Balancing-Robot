@@ -2,6 +2,7 @@
 #define MKS_SERVO42C_H
 #include <cstdint>
 #include "McpwmStepOutput.h"
+#include "GiamSatDongCo.h"
 #include "model/WheelStepCommand.h"
 
 enum class MksResult : uint8_t {
@@ -10,7 +11,7 @@ enum class MksResult : uint8_t {
 };
 enum class MksFault : uint8_t {
     None, InvalidCommand, CommandExpired, ServiceLate, BackendError, SparseBacklog,
-    EmergencyStop
+    EmergencyStop, WatchdogExpired
 };
 
 struct MksSnapshot {
@@ -26,7 +27,7 @@ struct MksSnapshot {
     uint64_t thoiDiemHetHan_us = 0;
 };
 
-// Chủ duy nhất của hai STEP, hai DIR và EN chung.
+// Chủ của STEP/DIR. EN được cấp qua GiamSatDongCo; ISR giám sát chỉ có quyền tắt EN.
 // Gọi API từ cùng một MotorTask; không gọi từ ISR.
 // ISR/điều khiển/safety khác gửi lệnh hoặc notification tới task sở hữu.
 class MksServo42CPair {
@@ -76,6 +77,7 @@ private:
 
     Axis _banhTrai;
     Axis _banhPhai;
+    GiamSatDongCo _giamSat;
     bool _daKhoiTao = false;
     bool _daBat = false;
     bool _biGioiHan = false;

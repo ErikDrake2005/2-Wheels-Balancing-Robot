@@ -35,6 +35,8 @@ constexpr float tanSoChayLienTucToiThieu_hz = 1000.0f;
 constexpr uint32_t chuKyPhucVuMotor_us = 250;
 constexpr uint32_t khoangCachPhucVuMotorToiDa_us = 2000;
 constexpr uint32_t thoiGianHetHanLenhMotor_us = 20000;
+// GPTimer ISR riêng kiểm tra deadline motor, không phụ thuộc MotorTask/esp_timer task.
+constexpr uint32_t chuKyGiamSatDocLap_us = 250;
 
 // Không cho tồn đọng cả cụm xung để phát bù sau khi task bị chậm.
 constexpr double gioiHanTonDongXungThua_buoc = 2.0;

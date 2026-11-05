@@ -4,6 +4,7 @@
 #include "config/BoardConfig.h"
 #include "config/ControlConfig.h"
 #include "config/ImuConfig.h"
+#include "config/ImuMountConfig.h"
 #include "config/MotorConfig.h"
 #include "config/PinConfig.h"
 #include "config/ProjectConfig.h"

@@ -5,7 +5,8 @@ constexpr float khoiLuongXeKhongTai_kg = 1.45f;
 
 constexpr float toaDoTrongTamX_m = 0.000f;
 constexpr float toaDoTrongTamY_m = 0.000f;
-constexpr float toaDoTrongTamZ_m = 0.035f;
+// Người dùng xác nhận: trọng tâm cao 2,5 cm so với tâm trục bánh.
+constexpr float toaDoTrongTamZ_m = 0.025f;
 
 constexpr float banKinhBanh_m = 0.040f;
 constexpr float khoangCachTamHaiBanh_m = 0.200f;

@@ -1,0 +1,41 @@
+{
+  "loc": {
+    "fs_hz": 200.0,
+    "fc_danh_nghia_hz": 40.0,
+    "dt_s": 0.005,
+    "tau_s": 0.0039788735772973835,
+    "he_so_pt1": 0.5568627241441778,
+    "fc_3db_roi_rac_hz": 27.47216143672588,
+    "tre_nhom_dc_ms": 3.9788735772973833,
+    "rms_white_noise_ratio": 0.6211839865088583,
+    "fusion_tau_s": 0.4,
+    "fusion_fc_hz": 0.3978873577297384,
+    "fusion_beta_toi_da": 0.012345679012345678,
+    "velocity_tau_s": 0.03,
+    "velocity_alpha": 0.14285714285714288,
+    "gyro_dlpf": 3.0,
+    "accel_dlpf": 3.0,
+    "chip_group_delay_ms": null
+  },
+  "motor": {
+    "model_nguoi_dung": "17HS4401S",
+    "dien_ap_nguon_V": null,
+    "h_tu_truc_m": 0.025,
+    "khoi_luong_kg": 1.45,
+    "R_m": 0.04,
+    "B_m": 0.2,
+    "xung_vong_banh": 6400.0,
+    "m_moi_xung": 3.926990816987242e-05,
+    "vmax_mps": 0.3926990816987242,
+    "rpm_banh_max": 93.75,
+    "luong_tu_v_moi_mau_mps": 0.007853981633974483,
+    "df_dt_step_per_s2": 76394.37268410975,
+    "torque_tinh_tien_moi_banh_Nm": 0.087,
+    "omega_con_lac_ly_tuong_radps": 19.80570624845274,
+    "thoi_gian_dac_trung_s": 0.050490499427563805,
+    "goc_gia_accel_3mps2_do": 17.009650306455804,
+    "tang_norm_accel_3mps2": 0.44861129469649264,
+    "i2c_14byte_toi_thieu_100k_ms": 1.5299999999999998,
+    "i2c_14byte_toi_thieu_400k_ms": 0.38249999999999995
+  }
+}

@@ -3,7 +3,7 @@
 
 #include <cstdint>
 
-enum class TrangThaiKhungDuLieuMpu : uint8_t {
+enum class TrangThaiKhungDuLieuImu : uint8_t {
     KhongHopLe = 0,
     HopLe,
     DuLieuCu,
@@ -11,12 +11,15 @@ enum class TrangThaiKhungDuLieuMpu : uint8_t {
     CanTinhChinhLai
 };
 
-struct KhungDuLieuMPU {
+struct KhungDuLieuImu {
     // Thời điểm của mẫu, đơn vị microsecond.
     uint64_t thoiDiemLayMau_us = 0;
 
-    // Số thứ tự, tăng sau mỗi lần đọc thành công.
+    // Chương trình chính dùng số thứ tự ngắt data-ready; có thể nhảy khi bỏ lỡ mẫu.
     uint32_t soMauLayDuoc = 0;
+    uint64_t soMauBoLo = 0;
+    uint32_t soThongBaoTrung = 0;
+    uint32_t soLanDocChongNgat = 0;
 
     // Gia tốc đo bởi accelerometer, đơn vị m/s².
     // Dữ liệu này vẫn bao gồm ảnh hưởng của trọng lực.
@@ -36,7 +39,10 @@ struct KhungDuLieuMPU {
     bool daHieuChinhConQuay = false;
 
     // Mặc định chưa có mẫu sử dụng được.
-    TrangThaiKhungDuLieuMpu trangThai = TrangThaiKhungDuLieuMpu::KhongHopLe;
+    TrangThaiKhungDuLieuImu trangThai = TrangThaiKhungDuLieuImu::KhongHopLe;
 };
+// Tương thích chương trình bench MPU6050 cũ; không mang bất kỳ dữ liệu DMP nào.
+using KhungDuLieuMPU = KhungDuLieuImu;
+using TrangThaiKhungDuLieuMpu = TrangThaiKhungDuLieuImu;
 
 #endif

@@ -55,6 +55,12 @@ bool MksServo42CPair::begin() {
         _banhTrai.step.stop(); _banhPhai.step.stop();
         return false;
     }
+    if (!_giamSat.begin(chanBatMotor, mucBatMotorCao,
+                       khoangCachPhucVuMotorToiDa_us, chuKyGiamSatDocLap_us)) {
+        _banhTrai.step.stop(); _banhPhai.step.stop();
+        _loi = MksFault::BackendError;
+        return false;
+    }
     _daKhoiTao = true;
     return true;
 }
@@ -65,11 +71,11 @@ MksResult MksServo42CPair::enable() {
     if (!daXacNhanCauHinhPhanCungMotor) return MksResult::HardwareConfigUnconfirmed;
     if (_daBat) return MksResult::Ok;
     if (!_banhTrai.step.isPauseReady() || !_banhPhai.step.isPauseReady()) return MksResult::Pending;
-    if (gpio_set_level(static_cast<gpio_num_t>(chanBatMotor), mucBatMotorCao ? 1 : 0) != ESP_OK) {
-        trip(MksFault::BackendError);
+    const uint64_t now = nowUs();
+    if (!_giamSat.bat(now + thoiGianHetHanLenhMotor_us)) {
+        trip(_giamSat.daNgat() ? MksFault::WatchdogExpired : MksFault::BackendError);
         return MksResult::FaultLatched;
     }
-    const uint64_t now = nowUs();
     _daBat = true;
     _sanSangBat_us = now + thoiGianOnDinhEnable_us;
     _hanLenh_us = now + thoiGianHetHanLenhMotor_us;
@@ -80,8 +86,8 @@ MksResult MksServo42CPair::enable() {
 
 bool MksServo42CPair::disable() {
     // EN off trước khi có thể cắt xung HIGH: thao tác bảo vệ, không phải đảo chiều.
-    const bool enOk = gpio_set_level(static_cast<gpio_num_t>(chanBatMotor),
-                                   mucBatMotorCao ? 0 : 1) == ESP_OK;
+    const bool enOk = _giamSat.daKhoiTao() ? _giamSat.tat() :
+        gpio_set_level(static_cast<gpio_num_t>(chanBatMotor), mucBatMotorCao ? 0 : 1) == ESP_OK;
     bool stepOk = true;
     if (_daKhoiTao) {
         const bool a = _banhTrai.step.stop();
@@ -117,6 +123,7 @@ bool MksServo42CPair::emergencyStop() {
 bool MksServo42CPair::clearFault() {
     if (!_daKhoiTao || _daBat) return false;
     if (!_banhTrai.step.stop() || !_banhPhai.step.stop()) return false;
+    if (!_giamSat.xoaLoi()) return false;
     _loi = MksFault::None;
     _thoiDiemRaLenhCuoi_us = 0;
     return true;
@@ -215,6 +222,10 @@ bool MksServo42CPair::dangChoXuLy() const {
 
 MksResult MksServo42CPair::service() {
     if (!_daKhoiTao) return MksResult::NotInitialized;
+    if (_giamSat.daNgat()) {
+        trip(MksFault::WatchdogExpired);
+        return MksResult::FaultLatched;
+    }
     if (_loi != MksFault::None) return MksResult::FaultLatched;
     if (!_daBat) return MksResult::Disabled;
     const uint64_t now = nowUs();
@@ -231,6 +242,10 @@ MksResult MksServo42CPair::service() {
     const double dt = static_cast<double>(khoangCachMauUs) / 1000000.0;
     if (!advance(_banhTrai, dt, now) || !advance(_banhPhai, dt, now)) {
         trip(MksFault::BackendError);
+        return MksResult::FaultLatched;
+    }
+    if (!_giamSat.giaHan(_hanLenh_us)) {
+        trip(MksFault::WatchdogExpired);
         return MksResult::FaultLatched;
     }
     return dangChoXuLy() ? MksResult::Pending : MksResult::Ok;
@@ -289,7 +304,7 @@ MksResult MksServo42CPair::stopMotion() {
 MksSnapshot MksServo42CPair::snapshot() const {
     MksSnapshot s{};
     s.daKhoiTao = _daKhoiTao;
-    s.daBat = _daBat;
+    s.daBat = _daBat && !_giamSat.daNgat();
     s.dangChoXuLy = dangChoXuLy();
     s.biGioiHan = _biGioiHan;
     s.loi = _loi;

@@ -15,6 +15,15 @@ struct TrangThaiXe {
 
     float gocNghien_rad = 0.0f;
     float tocDoNghien_radps = 0.0f;
+    float gocNghiengNgang_rad = 0.0f; // Góc từ gia tốc, dùng bảo vệ tư thế.
+    float tocDoNghiengNgang_radps = 0.0f;
+    float doLonGiaToc_mps2 = 0.0f;
+    bool giaTocTinCay = false; // Đủ gần trọng lực để khởi tạo/cho phép bật.
+    float gocTuGiaToc_rad = 0.0f;
+    float saiLechGiaToc_rad = 0.0f;
+    float doTinCayGiaToc = 0.0f;
+    float gocNghienTong_rad = 0.0f; // Độ lệch trục Z xe khỏi phương đứng, không có dấu.
+    float huongNghien_rad = 0.0f; // Hướng nghiêng trong XY xe; 0 khi đứng thẳng (không xác định vật lý).
     float viTriDoc_m = 0.0f;
     float vanTocDoc_mps = 0.0f;
 

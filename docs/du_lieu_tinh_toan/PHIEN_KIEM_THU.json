@@ -1,0 +1,13 @@
+{
+  "ngay": "2026-11-03",
+  "motor": "17HS4401S",
+  "trong_tam_tu_truc_m": 0.025,
+  "firmware_sha256": "2d1366b1853b2aefb8cd2835bd2e2f5550b8c01a02f9b5c2deb07359772eb6f3",
+  "tests": {
+    "nen": 14507,
+    "watchdog_stub": 19,
+    "loc_di_chuyen": 169
+  },
+  "docs_links": "PASS",
+  "do_phan_cung": false
+}
