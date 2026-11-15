@@ -2,7 +2,7 @@
 
 > Cập nhật lọc và di chuyển 03/11/2026: [ICM20602](BAO_CAO_ICM20602_LOC_NHIEU.md), [MKS42C/17HS4401S](BAO_CAO_MKS42C_17HS4401S.md). Runtime không DMP; PT1 chỉ nhánh D; có lệnh di chuyển có hạn; R01 đã sửa.
 
-Đối chiếu lại mã nguồn ngày **05/11/2026**. Trạng thái kiểm chứng và việc còn mở:
+Đối chiếu lại mã nguồn ngày **08/11/2026**. Trạng thái kiểm chứng và việc còn mở:
 [checklist](CHECKLIST_TINH_NANG.md), [báo cáo rà soát](KET_QUA_RA_SOAT_2026-11-03.md).
 
 Tài liệu này mô tả mã đang chạy từ `src/main.cpp`, sau các sửa lỗi giám sát motor,
@@ -61,8 +61,8 @@ flowchart TD
 | --- | --- |
 | `src/main.cpp` | Tạo `xeCanBang`; Arduino gọi `setup()` và `loop()` |
 | `src/app/RobotApp.*` | Ghép các module, tạo task/queue/timer, nhận lệnh Serial |
-| `src/calib/UI_Calib.*` | UI nút/RGB chạy đồng bộ trong setup, đo bias và thu lượt lật trái–phải |
-| `lib/estimation/HieuChuanQuayNgang.*` | Tìm trục dọc khung từ gyro, dựng và kiểm tra ma trận gá cho UI |
+| `src/calib/UI_Calib.*` | UI nút/RGB chạy đồng bộ trong setup, đo bias và thu lượt ĐẦU nằm → đứng → ĐUÔI nằm |
+| `lib/estimation/HieuChuanNghiengDoc.*` | Tìm trục Y từ gyro và trục X từ hai mốc nằm ĐẦU/ĐUÔI, dựng ma trận gá |
 | `lib/estimation/HeTrucImu.*` | Kiểm tra ma trận và đổi vector từ hệ sensor sang hệ xe |
 | `src/core/PhienCanBang.h` | Quản lý tắt → chờ lệnh mới → chạy; chống dùng lại lệnh cũ |
 | `src/core/BoLocThuTuMau.h` | Nhận mẫu mới một lần, đếm bỏ lỡ/trùng và xử lý số thứ tự quay vòng |
@@ -117,22 +117,37 @@ lấy bản mới nhất, không phát lại cả danh sách lệnh cũ khi task
 4. `WheelPulseCounter::begin()` nối input path của chính GPIO STEP/DIR vào PCNT.
 5. `Icm20602Driver::begin()` đặt CS GPIO9 lên HIGH, SA0 GPIO8 xuống LOW cho địa chỉ
    `0x68`, mở I²C SDA10/SCL11, kiểm tra ID `0x12`, reset, cấu hình và đọc lại thanh ghi.
+   `kiemTraSauKhoiDong()` kiểm lại ID/nguồn/cấu hình/ngắt và 32 mẫu mới trong 1,5 s.
+   LED cam trong giai đoạn này; FAIL giữ EN tắt, không tạo task cân bằng.
 6. Nếu UI bật, `UI_Calib::chay()` chờ xác nhận tư thế tham chiếu, đo bias bằng 500
-   mẫu đứng yên, lấy mốc trái, thu lượt lật trái–phải, lấy mốc phải và dựng ma trận.
+   mẫu đứng yên, lấy mốc ĐẦU nằm, thu lượt quay qua đứng sang ĐUÔI nằm, lấy mốc sau
+   và dựng ma trận. Mục tiêu mỗi bên gần 90° (80–90°), với mặt đỡ/gối đỡ cứng theo khung.
+   Bias và mốc tĩnh chờ rung lắng 500 ms, tự bỏ khoảng không ổn định và thu lại
+   tối đa 30 s mỗi phép đo. Lỗi I²C hoặc mất mẫu 500 ms được phân biệt với rung.
    LED trắng yêu cầu giữ yên gần `gocCanBang_rad`; sau đó app truyền ma trận vào
    estimator. UI lỗi thì giữ EN tắt và chờ nhấn nhả để làm lại. Nếu UI tắt, app dùng
    ma trận `ImuMountConfig.h` và chỉ chạy `hieuChinhConQuay(500)`.
-7. Tạo bốn queue (IMU, motor, điều khiển, di chuyển) và các task. Gửi trạng thái motor ban đầu: tắt, phiên 0.
+7. Tạo năm queue (IMU, motor, điều khiển, di chuyển, chẩn đoán IMU) và các task.
+   Queue chẩn đoán cập nhật cả khi mẫu góc bị bỏ do ngắt chồng/đọc trễ.
+   Runtime dùng INT giữ mức và burst `INT_STATUS + 14 byte`; timestamp IRQ phải
+   đọc xong trong một chu kỳ 5 ms. Poll ACK phục hồi không thành mẫu điều khiển.
+   Xem [luồng và log mới](CHAN_DOAN_IMU_RUNTIME_2026-11-09.md).
+   Trạng thái motor ban đầu: tắt, phiên 0.
 8. Gắn ngắt ICM; tạo `esp_timer` để đánh thức MotorTask mỗi 250 µs.
 9. Bỏ các byte Serial đã chờ trong lúc calib, đặt `_daSanSang = true`, sáng xanh lá
    và in READY. Xe vẫn tắt cho đến yêu cầu `a` hợp lệ. Nút calib không dùng để arm.
 
-UI giữ trục X đo từ chuyển động khung: `Y = normalize(g_ref × X)`, `Z = X × Y`,
-các hàng ma trận là X/Y/Z. Nhờ đó pitch lúc người giữ không bị đặt bằng 0. Roll 0
-vẫn theo tư thế tham chiếu, nên đặt hai bánh cùng độ cao. `gocCanBang_rad` là góc
-cân bằng cơ học riêng và không được UI tự ghi. Ma trận UI chỉ tồn tại trong RAM.
+UI tìm trục Y của khung từ PCA gyro XYZ; lượt trước → sau có tổng góc âm quanh Y.
+Lấy `d=a_sau-a_truoc`, dựng `X=normalize(d-Y*dot(Y,d))`, `Z=X×Y`; các hàng R là
+X/Y/Z. Gravity lúc dựng chỉ dùng kiểm hướng lên, không đặt pitch lúc người giữ
+bằng 0. Hai mốc nằm đúng hình học giữ được pitch ban đầu; nếu mốc trước 80° và
+mốc sau 90° thì mốc góc có thể lệch khoảng 5°. Giới hạn±5° chỉ áp dụng khi cả hai
+góc thật trong 80–90°; cửa sổ 80–92° sau fit không xác minh góc thật. Cần mặt chuẩn cơ khí để có zero
+lặp lại đúng. `gocCanBang_rad` vẫn là góc cân bằng cơ học riêng, UI không tự ghi.
+Ma trận chỉ tồn tại trong RAM; hai mốc ±90° xử lý bằng vector trước khi tạo estimator/PID.
 Xem [quy trình chi tiết](HUONG_DAN_UI_CALIB.md) và
-[phân tích sơ đồ/tư thế tham chiếu](DOI_CHIEU_SO_DO_VA_FLOW_CALIB.md).
+[phân tích sơ đồ/tư thế tham chiếu](DOI_CHIEU_SO_DO_VA_FLOW_CALIB.md) và
+[báo cáo ĐẦU/ĐUÔI mới](CALIB_DAU_DUOI_VA_KIEM_CHUNG_GOC_2026-11-08.md).
 
 Lỗi trước khi tạo task trả `false` và giữ EN tắt. Lỗi tạo task/timer đi qua
 `cleanupStartup()` để tháo ngắt, dừng timer, xóa task/queue. `main.cpp` không thử
@@ -279,6 +294,11 @@ gian cắt EN thực tế. EN của MKS phải thật sự nhận mức H/L cấ
 phải kiểm tra cả bảng này và thời gian đọc I²C thực tế.
 
 ## 11. Những gì đã và chưa được kiểm chứng
+
+Bản 08/11/2026: sáu nhóm native và build PASS; calib pitch 2.038 kiểm tra,
+boot/UI 44 kiểm tra. RAM 57.044 byte, flash 476.206 byte. Chưa upload/chạy xe thật;
+các kết quả chỉ kiểm chứng logic/số học/I/O giả của cấu hình hiện tại.
+
 
 Đã build firmware cho môi trường ESP32-S3 hiện có. Test native kiểm tra tính toán,
 ngưỡng, nghiêng ngang ±85°, mẫu toàn 0, phiên bật mới, mẫu trùng/quay vòng, và mã

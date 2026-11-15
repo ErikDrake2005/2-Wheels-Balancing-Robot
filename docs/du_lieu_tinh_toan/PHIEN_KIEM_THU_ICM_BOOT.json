@@ -1,0 +1,45 @@
+{
+  "ngay": "2026-11-05",
+  "pham_vi": "icm_boot_va_calib_tu_thu_lai_khi_rung",
+  "build": {
+    "ket_qua": "PASS",
+    "moi_truong": "lolin_s3_mini",
+    "ram_bytes": 57044,
+    "flash_app_bytes": 474070,
+    "firmware_sha256": "97432036fe405a7d1e83e561c8215d1fac0e91f721044559a1a5ce5a1ec51400"
+  },
+  "native_tests": {
+    "ket_qua": "PASS",
+    "so_nhom": 6,
+    "control": 14507,
+    "watchdog": 19,
+    "loc_di_chuyen": 169,
+    "he_truc_vector": 3114,
+    "calib_roll": 25,
+    "boot_bus_ui_retry": 43
+  },
+  "phan_cung_mo_phong": [
+    "Wire/thanh_ghi_ICM",
+    "dong_ho",
+    "nut",
+    "RGB",
+    "GPIO"
+  ],
+  "kiem_tra_link": {
+    "so_da_kiem": 115,
+    "so_thieu": 0
+  },
+  "da_upload": false,
+  "da_thu_tren_xe": false,
+  "boot": {
+    "so_mau_moi": 32,
+    "timeout_ms": 1500
+  },
+  "calib": {
+    "cho_rung_lang_ms": 500,
+    "timeout_on_dinh_ms": 30000,
+    "timeout_mat_mau_ms": 500,
+    "so_mau_bias": 500,
+    "so_mau_moc_tinh": 80
+  }
+}

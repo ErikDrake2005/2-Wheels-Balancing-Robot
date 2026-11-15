@@ -1,11 +1,16 @@
 # Hướng dẫn sử dụng xe cân bằng
 
+**Runtime 09/11/2026:** mã nhận diện source hiện là `imuAck-20261109-t5`. Kiểm tra dòng
+`FIRMWARE` sau setup hoặc gửi `h`; telemetry còn in `fw=imuAck-20261109-t5` để xác
+nhận đúng bản đã nạp. [Bảng chẩn đoán runtime](CHAN_DOAN_IMU_RUNTIME_2026-11-09.md).
+
+
 > Bản có `UI_Calib` dùng GPIO3 cho nút xác nhận, SDA GPIO10 và SCL GPIO11. Motor 1 phải, motor 2 trái theo xác nhận của người dùng. Thực hiện các bước theo LED trước khi gửi `a`. [Hướng dẫn UI_Calib](HUONG_DAN_UI_CALIB.md) · [Sơ đồ và luồng calib](DOI_CHIEU_SO_DO_VA_FLOW_CALIB.md).
 
 > **05/11/2026:** UI đang đo ma trận lắp mỗi lần boot. Khi tắt UI, nhập ma trận vào `ImuMountConfig.h`; xem [phương pháp offline](BAO_CAO_BU_LECH_LAP_IMU.md).
 > Gửi `i` khi motor tắt để bật/tắt dòng RAW_IMU5Hz. Đầu ra này ở hệ sensor để hiệu chuẩn.
 
-Cập nhật theo mã nguồn ngày **05/11/2026** (Asia/Saigon).
+Cập nhật theo mã nguồn ngày **08/11/2026** (Asia/Saigon).
 
 Đợt cập nhật lọc/di chuyển: xem [báo cáo ICM20602](BAO_CAO_ICM20602_LOC_NHIEU.md)
 và [báo cáo 42C/17HS4401S](BAO_CAO_MKS42C_17HS4401S.md). Trọng tâm đã cập nhật
@@ -14,6 +19,10 @@ và [báo cáo 42C/17HS4401S](BAO_CAO_MKS42C_17HS4401S.md). Trọng tâm đã c�
 Tài liệu này hướng dẫn cấu hình, biên dịch, nạp, vận hành và đọc log của firmware
 ESP32-S3 + ICM20602 + hai MKS Servo42C. Những bước đo trên xe dưới đây là quy trình
 cần thực hiện; tài liệu không xác nhận phần cứng đã vượt qua các phép đo đó.
+
+**Kiểm tra mới sau reset:** LED cam chờ `ICM_BOOT PASS` (32 mẫu mới), sau đó mới
+sang xanh dương để nhận nút. Rung trong bước đo tĩnh làm tự thu lại tối đa 30 s,
+không báo đỏ ngay. Xem [báo cáo và bảng lỗi Serial](SUA_LOI_CALIB_VA_KIEM_TRA_ICM_KHOI_DONG.md).
 
 ## 1. Phạm vi và nguyên lý vận hành
 
@@ -79,6 +88,7 @@ PCNT và GPTimer của ESP-IDF.
 | Motor / vi bước đầu vào | 200 bước/vòng / 32 | 6400 STEP/vòng motor; tỉ số truyền đang là 1:1 |
 | Bán kính bánh | 0,04 m | Dùng quy đổi xung sang quãng đường/vận tốc |
 | I²C / IMU | 100 kHz / 200 Hz | Địa chỉ I²C `0x68`; ID ICM20602 phải là `0x12` |
+| Timeout giao dịch I²C | 5 ms ở bản t5 | Tăng từ 2 ms để thử xử lý giao dịch đọc thiếu; chốt mẫu vẫn phải hoàn tất trước chu kỳ 5 ms, Safety giữ 20 ms |
 | Hiệu chuẩn gyro | 500 mẫu | Giữ xe yên lúc khởi động; riêng thời gian thu mẫu lý tưởng khoảng 2,5 giây |
 | Serial | 115200 baud | Nhận phím và in log |
 | `batPidMo` | `true` | Mặc định dùng luật mờ; có thể đổi bằng phím `f` khi tắt motor |
@@ -94,6 +104,10 @@ Các thông số HIGH/LOW STEP, DIR hold/setup và thời gian ổn định EN t
 `MotorConfig.h` đang được ghi rõ là giá trị thử. Cần đối chiếu tài liệu/đo thực tế.
 
 ## 4. Biên dịch và chạy kiểm thử trên máy
+
+Bản 08/11/2026: build và sáu nhóm native PASS; calib pitch 2.038 kiểm tra, boot/UI 44
+kiểm tra. RAM 57.044 byte, flash 476.206 byte. Chưa upload hoặc thử xe thật trong
+đợt kiểm chứng này.
 
 Mở terminal PowerShell ở thư mục dự án:
 
@@ -136,22 +150,33 @@ Trong lúc khởi động, đặt hai bánh cùng độ cao, giữ khung gần t
 nhấn nhả nút ở bước LED xanh dương. Đây là tư thế tham chiếu do người giữ,
 không phải bằng chứng xe đang ở góc cân bằng cơ học. Tiếp tục theo
 [trình tự LED](HUONG_DAN_UI_CALIB.md). Khi setup thành công,
-chương trình in dòng bắt đầu bằng `READY ICM20602`, sau đó có log định kỳ. Nếu
+chương trình in `FIRMWARE imuAck-20261109-t5` và dòng bắt đầu bằng `READY ICM20602`,
+sau đó có log định kỳ. READY xác nhận setup hoàn tất; dữ liệu runtime còn phải
+đạt kiểm tra tiếp theo. Nếu
 setup thất bại, chương trình giữ trạng thái chưa sẵn sàng; sửa nguyên nhân rồi reset.
 Riêng phép đo bias kiểm tra phương sai gyro; quay đều vẫn có thể bị nhận nhầm
 thành bias. UI có thêm kiểm tra mốc gia tốc và lượt quay, nhưng người dùng vẫn
 phải giữ xe thật yên trong giai đoạn đo bias.
 
-UI đo bias lúc đứng yên, sau đó lấy trục dọc khung từ lượt lật trái–phải. Ma trận
-giữ trục dọc đo được nên pitch ban đầu không bị ép về 0; roll 0 vẫn theo tư thế
-tham chiếu, vì thế hai bánh phải cùng độ cao. Ma trận chỉ lưu trong RAM và đo lại
-sau reset. Góc cân bằng `gocCanBang_rad` trong `ControlConfig.h` cần xác định riêng;
+UI hiện dùng thao tác ĐẦU/ĐUÔI: dán nhãn ĐẦU theo hướng tiến đã chọn, hạ ĐẦU
+đặt nằm gần 90°, rồi chuyển qua tư thế đứng sang hạ ĐUÔI đặt nằm gần 90°. Không
+làm thao tác lật ngang trái/phải của hướng dẫn cũ. Gyro XYZ xác định Y quanh trục
+bánh; hiệu hai vector gia tốc xác định X. Tư thế dựng lúc đầu không bị ép pitch=0.
+Cần mặt đỡ chuẩn theo khung: nếu hai đầu chỉ ước lượng 80–90° không giống nhau,
+mốc pitch có thể lệch đến khoảng 5° khi cả hai góc thật thuộc khoảng đó. Cửa sổ
+80–92° sau fit không bảo đảm góc thật. Xem [hình học và kiểm chứng](CALIB_DAU_DUOI_VA_KIEM_CHUNG_GOC_2026-11-08.md).
+Ma trận chỉ lưu trong RAM và đo lại sau reset. Góc cân bằng
+`gocCanBang_rad` trong `ControlConfig.h` cần xác định riêng;
 giá trị 0 hiện tại là giá trị khởi đầu. Ở LED trắng, giữ yên gần góc đặt đó:
 `|pitch - gocCanBang_rad| ≤ 0,10 rad` và `|roll| ≤ 0,10 rad` trong 80 mẫu liên tiếp.
-Xem `CALIB_RETURN` trên Serial nếu bước này chưa qua.
+Xem `CALIB_RETURN` theo độ/rad trên Serial nếu bước này chưa qua. Khi motor vẫn
+tắt, thử chúi đầu góc nhỏ để kiểm theta dương, ngả sau để kiểm theta âm, rồi trở
+lại cùng tư thế để kiểm độ lặp. Hai mốc nằm ngang chỉ dùng trong UI, không arm ở ±90°.
 
-LED xanh lá báo setup sẵn sàng. Nút GPIO3 chỉ phục vụ calib; sau READY, nút chưa
-có chức năng bật/tắt cân bằng. Gửi `a` riêng qua Serial để yêu cầu bật, sau khi
+Sau calib, LED cam chờ báo cáo runtime đầu tiên. LED chuyển xanh khi trạng thái
+hiện tại vượt kiểm tra an toàn và không có lỗi, đỏ khi dữ liệu/trạng thái lỗi
+hoặc quá hạn. Xanh chưa bảo đảm đủ mọi điều kiện arm. Nút GPIO3 chỉ phục vụ calib;
+sau READY, nút chưa có chức năng bật/tắt cân bằng. Gửi `a` riêng qua Serial để yêu cầu bật, sau khi
 các điều kiện phần cứng và tư thế đã được đáp ứng. Mặc định cờ phần cứng vẫn `false`.
 
 ## 6. Vận hành bằng các lệnh Serial
@@ -217,7 +242,7 @@ Giai đoạn chờ có thể ngắn hơn chu kỳ log 200 ms, nên monitor có t
 
 | Bước | Thực hiện | Tiêu chí quan sát/đo |
 | --- | --- | --- |
-| 1. Khởi động, EN tắt | Nạp với cờ phần cứng `false`, làm theo nút và LED | Có READY sau khi LED xanh lá; EN phần mềm tắt |
+| 1. Khởi động, EN tắt | Nạp với cờ phần cứng `false`, làm theo nút và LED | Có FIRMWARE/READY; sau đó dữ liệu runtime hợp lệ mới xanh; EN phần mềm vẫn tắt |
 | 2. Đọc IMU | Nghiêng dọc/ngang từ từ khi motor tắt | `theta` tăng dương khi nghiêng trước theo trục đã chọn; `rate` cùng chiều lúc bắt đầu nghiêng; `roll` thay đổi khi nghiêng ngang; norm gia tốc đứng yên gần 9,81 |
 | 3. Tư thế không cho bật | Đặt thân nghiêng ngang lớn và gửi `a` | Hàm kiểm tra báo tư thế không phù hợp và EN giữ tắt; ngưỡng ngã hiện tại là 0,50 rad |
 | 4. Đo STEP/DIR/EN | Dùng bench tín hiệu và thiết bị đo, đối chiếu manual MKS | Độ rộng, cực tính, khoảng đổi DIR và phản ứng EN phù hợp driver thực tế |
@@ -246,25 +271,64 @@ nó không tự chứng minh kết quả đo đúng.
 | `EN` | Trạng thái bật theo driver, có loại trừ khi giám sát đã ngắt; không phải dữ liệu UART từ MKS |
 | `fuzzy` | 1: dùng luật mờ; 0: hệ số cố định |
 | `fault` | Lỗi ứng dụng giữ lại, chẳng hạn `emergency`, `fallen`, `motor_fault` |
-| `ready` | Kiểm tra mẫu gần nhất; `none` nghĩa chưa có lỗi ở bước kiểm tra đó |
+| `ready` | Kết quả kiểm tra an toàn tại thời điểm in log, kết hợp lỗi ControlTask; `none` chưa bảo đảm đủ điều kiện arm |
+| `fw` | Mã firmware hiện tại là `imuAck-20261109-t5`; cần phân biệt với log bản `imuAck-20261109` chưa có hậu tố t5 |
 | `motorFault` | Mã lỗi lớp motor |
 | `last` | Kết quả thao tác motor gần nhất |
-| `theta`, `rate`, `target` | Góc dọc, gyro dọc, góc đặt: rad, rad/s, rad |
+| `theta`, `rate`, `target` | Góc dọc, tốc độ nghiêng dọc, góc đặt: rad, rad/s, rad; khi `angleValid=0`, góc có thể là số lưu cũ |
+| `thetaDeg`, `targetDeg` | Cùng góc dọc/góc đặt, đổi sang độ |
 | `roll`, `accel` | Góc ngang từ gia tốc, độ lớn gia tốc: rad, m/s² |
 | `x`, `v` | Vị trí/vận tốc ước lượng: m, m/s |
 | `STEP` | Tổng xung trái/phải có dấu, không phải tốc độ |
 | `cmd` | Tốc độ STEP/s mục tiêu sau giới hạn của driver |
 | `K` | Kp/Ki/Kd hiện hành; sau reset có thể là 0 trước khi cập nhật |
 | `serviceMax` | Khoảng cách MotorTask lớn nhất, µs; số thống kê gồm cả thời gian motor tắt |
-| `miss`, `dup`, `overlap` | Số mẫu nhảy thứ tự, thông báo trùng/lùi, lần đọc gặp ngắt mới |
+| `miss`, `dup`, `overlap` | Các bộ đếm tích lũy: số mẫu nhảy thứ tự, thông báo trùng/lùi, lần đọc gặp ngắt mới; `miss` không phải số thứ tự mẫu |
+| `frame` | Trạng thái frame gần nhất chuyển tới ControlTask: `0=KhongHopLe`, `1=HopLe`, `2=DuLieuCu`, `3=LoiIO`, `4=CanTinhChinhLai` |
+| `readStatus` | Trạng thái lần đọc/chốt IMU mới nhất theo cùng enum, lấy từ queue chẩn đoán riêng ngay cả khi mẫu không được chuyển tới ControlTask |
+| `angleValid`, `biasOk` | Góc hợp lệ và còn mới dưới 20 ms / cờ đã trừ bias trong frame hiện tại; `biasOk=0` trên frame lỗi không tự chứng minh bias đã mất/sai |
+| `rawSeq`, `irqSeq` | Số ngắt gắn vào frame được chốt / số ngắt nguồn trong snapshot chẩn đoán |
+| `irqAgeMs`, `imuAgeMs`, `okAgeMs` | Tuổi ngắt cuối, góc hợp lệ cuối, lần chốt mẫu tốt cuối; `-1` khi chưa có mốc hợp lệ để tính tuổi |
+| `imuOk`, `imuWait` | Số mẫu được chốt hợp lệ / số lần hết chờ thông báo ngắt 20 ms |
+| `imuI2c`, `imuEmpty` | Số giao dịch runtime lỗi / thông báo ngắt nhưng status không có data-ready |
+| `ackRecovery` | Số lần thử ACK phục hồi sau timeout; mẫu poll này không được xuất thành mẫu góc hợp lệ |
+| `imuLate` | Số mẫu bị bỏ vì đọc xong muộn ít nhất một chu kỳ mẫu, hoặc thời điểm ngắt nằm ở tương lai; chu kỳ hiện tại 5 ms |
+| `i2cLast`, `regLast` | Mã và thanh ghi của lỗi I²C runtime gần nhất; giữ lại sau khi bus đọc tốt trở lại |
+| `rx`, `used` | Số byte `requestFrom()` trả về / số yêu cầu; số byte thực sự đã lấy bằng `read()` trong giao dịch gần nhất |
+| `readUs`, `readMaxUs` | Thời gian toàn giao dịch đọc gần nhất / lớn nhất từ lúc chạy runtime, µs |
+| `rxErr`, `usedErr`, `errReadUs` | Số byte nhận/yêu cầu, byte đã đọc và thời gian của giao dịch runtime lỗi gần nhất; giữ sau lần đọc tốt |
 | `gyroD` | Gyro sau PT1 nhánh D, rad/s |
 | `innov`, `trust` | Sai lệch góc accel–dự đoán, rad; trọng số tin cậy0..1 |
 | `vref`, `yawref` | Mục tiêu sau ramp, m/s và rad/s |
 | `tilt`, `tiltDir` | Độ nghiêng tổng và hướng trong XY xe, rad; hướng không xác định khi thẳng được in0 |
 
+Chẩn đoán IMU có queue riêng nên `irqSeq`, `overlap`, `imuLate`, `imuI2c` vẫn có
+thể tăng khi mọi mẫu góc đều bị loại. Vì vậy `frame=1` lưu từ ControlTask không
+đủ chứng minh đang có dữ liệu mới: xem thêm `angleValid`, `imuAgeMs` và
+`readStatus`. Sequence 32 bit được phép quay vòng về 0; không kết luận mất ngắt
+chỉ vì một giá trị sequence bằng 0.
+
 Đối chiếu `serviceMax` với thời điểm thử và trạng thái motor. Một giá trị cực đại
 đã ghi từ trước không giảm khi task hoạt động bình thường trở lại; reset bắt đầu
 đợt thống kê mới. Độ trễ cắt EN cần đo riêng, không suy trực tiếp từ trường này.
+
+Log người dùng gửi với các dòng `EN=0`, `phase=0`, `last=3`, `ready=imu_invalid`
+và góc lặp nguyên đã được xác nhận là **log bản cũ**. Nó không chứng minh bản
+calib ĐẦU/ĐUÔI mới đang lỗi. `last=3` chỉ là Disabled; `trust=0` và góc đứng yên
+cần kiểm cờ hợp lệ/tuổi mẫu, không vội chỉnh PID hoặc góc cân bằng. Bộ đếm
+`miss` đứng yên chưa đủ phân biệt mất IRQ với đọc I²C liên tục thất bại.
+
+Log tiếp theo có 71 dòng telemetry mang `fw=imuAck-20261109` (chưa t5), cuối
+đợt `irqSeq=1394`, `imuOk=802`, `imuI2c=431`, tuổi góc từng tới 623 ms,
+`i2cLast=6`, `regLast=0x3A`. Đây là luồng đọc gián đoạn: vẫn nhận ngắt và có mẫu
+đạt, nhưng có nhiều giao dịch không nhận đủ byte. Mã 6 chưa chứng minh backend
+bị timeout. Người dùng xác nhận tư thế ngả ĐUÔI ở cuối log là thao tác thật;
+không lấy riêng số góc cuối đó làm bằng chứng calib sai.
+
+Bản t5 thêm `rx/used/readUs` và bản lỗi lưu `rxErr/usedErr/errReadUs`. Ví dụ
+`rx=15/15 used=15` nghĩa đã nhận và lấy đủ burst runtime; nếu `rxErr=14/15
+usedErr=0`, driver đã bỏ buffer thiếu trước khi giải mã, không có nghĩa đã dùng
+14 byte làm mẫu. Kể cả đủ byte, guard timestamp và tuổi mẫu vẫn phải đạt.
 
 Mã `last`: `0=Ok`, `1=Saturated`, `2=Pending`, `3=Disabled`, `4=NotInitialized`,
 `5=ConfigInvalid`, `6=HardwareConfigUnconfirmed`, `7=FaultLatched`.
@@ -283,6 +347,10 @@ Với lỗi dừng do ứng dụng, xem đồng thời `fault` để tìm nguyê
 | `BOOT ERROR: ma tran lap IMU` | Kiểm tra R sensor→xe: hữu hạn, trực giao, det+1; xem công cụ hiệu chuẩn |
 | Hiệu chuẩn gyro thất bại | Giữ cảm biến yên, kiểm tra rung, dữ liệu và timeout trước khi nới ngưỡng |
 | Gửi `a` nhưng EN vẫn 0 | Kiểm tra `fault`, tư thế, gyro, `ready`, cờ phần cứng và `last`; khi driver từ chối vì cờ phần cứng, `last=6` |
+| `ready=imu_invalid`, góc lặp nguyên | Xác nhận `fw`; xem `frame`, `irqSeq`, `imuAgeMs`, `imuWait`, `imuI2c`. Không dùng góc lưu cũ để kết luận tư thế hoặc calib sai |
+| `irqSeq` không tăng, `imuWait` tăng | Kiểm tra INT GPIO7, cực tính và dòng ACK; ACK phục hồi không thay thế timestamp ngắt thật |
+| `imuI2c` tăng | Đọc `i2cLast`/`regLast` và `rxErr/usedErr/errReadUs`, kiểm bus/nguồn; timeout I²C t5 là 5 ms, bus vẫn 100 kHz và không nới guard chốt mẫu/Safety |
+| `irqSeq` tăng nhưng `imuOk` không tăng, `imuLate`/`overlap` tăng | Ngắt vẫn tới nhưng timestamp không chắc đúng cho frame đọc được; kiểm độ trễ task/I²C và tải hệ thống, không dùng góc lưu cũ |
 | `ready=pulse_invalid` lúc mới chạy | Mẫu đầu chưa đủ tính vận tốc; nếu kéo dài, kiểm tra PCNT và timestamp |
 | `fallen` khi thấy xe đứng thẳng | Đối chiếu trục/dấu cảm biến, góc cân bằng và cách lắp |
 | `imu_stale` hoặc `pulse_stale` | Kiểm tra ngắt IMU, task, lịch phục vụ và tuổi mẫu; không chỉ tăng timeout để che nguyên nhân |

@@ -1,88 +1,110 @@
-# Hiệu chuẩn và khởi động bằng nút, LED RGB
+# Hiệu chuẩn góc bằng thao tác ĐẦU và ĐUÔI xe
 
-Cập nhật 05/11/2026 theo sơ đồ người dùng và xác nhận **motor 1 phải, motor 2 trái**.
+Cập nhật **09/11/2026**; thao tác ĐẦU/ĐUÔI giữ theo bản 08/11. Quy trình hiện tại dùng **chúi đầu/ngả sau quanh trục
+hai bánh**. Hướng dẫn “nghiêng trái/phải 30–45°” trước đây được thay thế bằng
+quy trình dưới đây. Giữ motor tắt trong toàn bộ calib.
 
-`UI_Calib` đo bias gyro rồi xác định cách IMU được xoay so với thân xe. Quy trình
-chạy trước các task cân bằng và giữ motor tắt. Hoàn tất calib không có nghĩa xe
-đã được thử nghiệm cân bằng thành công.
+`UI_Calib` đo bias gyro, xác định phép quay từ cảm biến sang thân xe, rồi kiểm
+tra tư thế khởi động. Hoàn tất calib chưa chứng minh xe đã cân bằng được.
+Xem [báo cáo hình học và kiểm chứng góc](CALIB_DAU_DUOI_VA_KIEM_CHUNG_GOC_2026-11-08.md).
 
-## 1. Phân biệt ba việc cần hiệu chỉnh
+## 1. Xác định hướng trước khi bấm nút
+
+Bạn tự chọn phía nào là hướng xe sẽ chạy tiến và dán nhãn **ĐẦU** lên phía đó.
+Phía đối diện là **ĐUÔI**. Giữ quy ước này trong cả calib lẫn kiểm tra chiều motor.
+
+- **Chúi đầu/nghiêng tiến:** hạ ĐẦU xuống, ĐUÔI nâng lên. Đây là pitch dương.
+- **Ngả sau/nghiêng lùi:** hạ ĐUÔI xuống, ĐẦU nâng lên. Đây là pitch âm.
+- Trục quay của thao tác đi dọc **trục nối hai bánh**. Hai bánh không bị lật
+  sang một bên như thao tác nghiêng ngang trước đây.
+
+Gyro Y đo tốc độ **quay quanh Y**, không phải “góc đo bằng accel Y”. Nếu IMU lắp
+gần đúng hệ thân, khi chúi đầu gyro Y thường là thành phần chính; PCB xoay xéo
+có thể trộn X, Y và cả Z. Firmware dùng đủ các thành phần để tìm trục thật,
+rồi đổi cả gyro và accel sang hệ thân. Không chọn cứng một trục cảm biến.
+
+## 2. Ba việc hiệu chỉnh khác nhau
 
 | Việc | Cách xác định | Giới hạn |
 | --- | --- | --- |
-| Bias gyro | Giữ xe đứng yên, trung bình 500 mẫu gyro | Không lấy chuyển động lật xe làm bias |
-| Hướng lắp IMU so với thân xe | Tư thế tham chiếu và lượt lật trái → phải quanh trục dọc thân | Không tự biết trục thân nếu thao tác quay sai trục |
-| Góc cân bằng cơ học `gocCanBang_rad` | Vị trí trọng tâm và kiểm chứng trên xe thực | Không suy ra chỉ từ tư thế người đang đỡ xe |
+| Bias gyro | Giữ thân hoàn toàn yên, lấy 500 mẫu ổn định | Chuyển động lật xe không dùng để đo bias |
+| Hướng lắp IMU so với thân | Hai mốc ĐẦU/ĐUÔI nằm và lượt quay qua tư thế đứng | Cần quay đúng quanh trục bánh và có mặt đỡ hình học phù hợp |
+| Góc cân bằng cơ học `gocCanBang_rad` | Vị trí trọng tâm và kiểm chứng trên xe thực | Không suy ra chỉ từ tư thế người đang đỡ |
 
-Ví dụ bạn giữ xe chúi trước 6° khi xác nhận bước đầu: thuật toán mới giữ phép đo
-pitch khoảng 6°, không lấy tư thế đó làm pitch 0°. Tuy nhiên, mốc **roll 0** vẫn
-tham chiếu theo tư thế ban đầu. Vì vậy cần đặt hai bánh cùng độ cao, giữ thân xe
-không nghiêng trái/phải khi lấy mốc. Giữ gần thẳng trước/sau là đủ; không cần
-tìm đúng tư thế xe tự cân bằng ở bước này.
+Tư thế dựng ở bước xanh dương chỉ để lấy bias và mốc kiểm tra hướng lên. Nó
+**không bị gán pitch bằng 0**. Khi hai mốc nằm đúng theo hình học thân, góc
+nghiêng trước/sau ban đầu vẫn còn trong số đo sau calib.
 
-## 2. Chân sử dụng
+### Vì sao phải đặt nằm trên mặt đỡ ổn định?
+
+Mục tiêu thao tác là đặt nằm gần **90° ở cả phía ĐẦU và phía ĐUÔI**, thay cho
+ước lượng 30–45° bằng tay. Chuẩn bị sàn phẳng hoặc gối đỡ cứng chạm vào khung,
+với mặt chuẩn vuông góc hướng tiến. Không lấy linh kiện nhô trên PCB làm mặt chuẩn.
+
+Khoảng 80–90° giúp thao tác dễ hơn, nhưng không tự bảo đảm mốc 0 chính xác.
+Giới hạn sai mốc ±5° chỉ áp dụng khi **cả hai góc thật** đều trong khoảng 80–90°.
+Nếu phía ĐẦU thật là 80° và phía ĐUÔI thật là 90°, khung suy ra có thể lệch mốc
+pitch khoảng **5°**. Hai góc sau khi fit có thể trông đối xứng, nên thuật toán
+không thể phát hiện sai lệch này chỉ từ hai mốc đó. Muốn đo lặp lại đúng, cần
+hai mặt đỡ hoặc đồ gá có hình học đã biết; không chỉ giữ gần 90° bằng tay.
+
+## 3. Chân và chuẩn bị
 
 | Tín hiệu | GPIO | Ghi chú |
 | --- | --- | --- |
-| ICM20602 SDA / SCL | 10 / 11 | Theo sơ đồ mới |
-| ICM20602 SA0 / CS | 8 / 9 | Firmware đặt LOW / HIGH để dùng I²C tại `0x68` |
-| ICM20602 INT | 7 | Ngắt data-ready sau khi UI hoàn tất |
+| ICM20602 SDA / SCL | 10 / 11 | Theo sơ đồ người dùng |
+| ICM20602 SA0 / CS | 8 / 9 | LOW / HIGH để dùng I²C tại `0x68` |
+| ICM20602 INT | 7 | Data-ready sau khi UI hoàn tất |
 | Motor 1 phải DIR / STEP | 12 / 13 | Net `DIR1` / `ST1` |
 | Motor 2 trái DIR / STEP | 5 / 6 | Net `DIR2` / `ST2` |
-| EN chung | 2 | Cấu hình hiện tại active LOW, phải khớp MKS |
-| Nút xác nhận | 3 | Hiện cấu hình nút nối xuống GND, `INPUT_PULLUP` |
-| LED RGB | 48 | Mặc định thử WS2812, thứ tự GRB; sơ đồ chưa thể hiện LED |
+| EN chung | 2 | Hiện active LOW, phải khớp MKS |
+| Nút confirm | 3 | Nhấn kéo xuống GND, dùng pull-up nội theo cấu hình hiện tại |
+| LED RGB | 48 | WS2812/GRB mặc định, cần đối chiếu đúng phiên bản board |
 
-Header 4P theo thứ tự chân 1–4 là GPIO1, GPIO3, GPIO4, GND. Với cấu hình nút hiện
-tại, nối nút giữa chân 2 và chân 4 của header. Sơ đồ chỉ cho thấy header, chưa
-cho thấy mạch nút. Nếu nút thực tế kéo lên 3,3 V khi nhấn, đổi
-`nutCalibMucThap = false`; không đưa 5 V vào GPIO.
+Header 4P: chân 1 GPIO1, chân 2 GPIO3, chân 3 GPIO4, chân 4 GND. Với cấu hình nút
+hiện tại, nối nút giữa chân 2 và chân 4. Nếu mạch nút thực tế nhấn kéo lên 3,3 V,
+đổi `nutCalibMucThap=false`; không đưa 5 V vào GPIO.
 
-`chanRgbCalib` và `thuTuRgbCalibLaGRB` cần khớp phiên bản Super Mini. Có thể đặt
-`chanRgbCalib = -1` để dùng hướng dẫn Serial khi chưa xác minh LED.
-Nhả nút lúc bật nguồn/reset: GPIO3 tham gia chọn nguồn JTAG ở giai đoạn khởi động,
-tùy eFuse. [Datasheet ESP32-S3](https://www.espressif.com/sites/default/files/documentation/esp32-s3_datasheet_en.pdf)
+RGB có thể đổi `chanRgbCalib` và `thuTuRgbCalibLaGRB`; đặt chân -1 để tắt RGB
+và theo dõi Serial. Nhả nút khi reset/cấp nguồn vì GPIO3 có vai trò strapping
+chọn nguồn JTAG tùy eFuse.
+[Datasheet ESP32-S3](https://www.espressif.com/sites/default/files/documentation/esp32-s3_datasheet_en.pdf)
 
-## 3. Chuẩn bị
+Cố định PCB vào khung, dán nhãn ĐẦU/ĐUÔI, chuẩn bị hai mặt đỡ và mở Serial 115200.
+Giữ `daXacNhanCauHinhPhanCungMotor=false` khi kiểm tra cảm biến. Reset sẽ đo lại;
+ma trận hiện chỉ lưu RAM.
 
-1. Cố định PCB/IMU vào thân xe; nếu thay vị trí lắp sau calib phải reset và calib lại.
-2. Xác định đầu xe. Trái/phải tính khi nhìn từ đuôi về đầu xe. Trục dọc là đường
-   từ đuôi đến đầu, khác trục bánh chạy từ trái sang phải.
-3. Mở Serial 115200 để thấy hướng dẫn và lỗi. Giữ cờ
-   `daXacNhanCauHinhPhanCungMotor = false` trong lần kiểm tra cảm biến đầu tiên.
-4. Nhả nút, cấp nguồn/reset. Đợi LED xanh dương và dòng `CALIB`.
+## 4. Các bước theo màu LED
 
-## 4. Các bước theo màu
-
-| Bước, màu LED | Thao tác người dùng | Firmware làm gì / điều kiện chuyển bước |
+| Màu / bước | Thao tác | Firmware xử lý |
 | --- | --- | --- |
-| 1. Xanh dương | Đặt hai bánh cùng cao; giữ thân gần thẳng, không nghiêng bên; **nhấn rồi nhả** | Chờ xác nhận hoàn chỉnh, chưa lấy tư thế này làm góc cân bằng |
-| 2. Vàng | Giữ hoàn toàn yên khoảng vài giây | Đo bias gyro 500 mẫu; lấy 80 mẫu gia tốc làm mốc tham chiếu |
-| 3. Xanh lơ | Nghiêng thân sang **trái 30–45°**, giữ yên, **nhấn rồi nhả** | Ghi nhận yêu cầu lấy mốc trái |
-| 4. Vàng | Tiếp tục giữ yên bên trái | Đợi 150 ms cho rung nút lắng xuống, lấy 80 mẫu gia tốc |
-| 5. Tím | Lật chậm từ trái qua giữa sang **phải 30–45°**, giữ hướng đầu xe; dừng yên rồi **nhấn, nhả** | Thu gyro suốt lượt quay; kết thúc và xác nhận trong 30 s |
-| 6. Vàng | Giữ yên bên phải | Lấy 80 mẫu gia tốc phải, tính và kiểm tra ma trận lắp |
-| 7. Trắng | Đưa xe về gần góc đặt khởi động; giữ yên, **không cần bấm nút** | Chờ 80 mẫu liên tiếp đạt điều kiện tư thế, tối đa 30 s |
-| 8. Xanh lá | Xem `READY` và telemetry Serial | Khởi tạo task xong; sẵn sàng nhận yêu cầu `a`, motor chưa tự bật |
-| Đỏ + `CALIB LOI` | Đưa xe về tư thế bước 1, giữ yên, **nhấn rồi nhả** | Làm lại từ phép đo bias; lần thử lại chuyển thẳng sang vàng |
-| Đỏ + `BOOT ERROR` | Xem lỗi Serial, xử lý kết nối/cấu hình rồi reset | Lỗi khởi tạo không được giải quyết bằng nút xác nhận |
+| Cam | Chờ, chưa nhấn nút | Khởi tạo và kiểm tra ID/cấu hình/32 mẫu mới ICM20602 |
+| Xanh dương | Hai bánh cùng cao, dựng thân gần thẳng, giữ yên; **nhấn rồi nhả** | Nhận mốc tham chiếu, không xác định góc cân bằng cơ học |
+| Vàng | Tiếp tục giữ hoàn toàn yên | Đợi 500 ms, đo 500 mẫu bias và 80 mẫu gia tốc; rung thì tự thu lại trong thời hạn |
+| Xanh lơ | **Hạ ĐẦU xuống**, đặt nằm lên mặt đỡ phía trước gần 90°; giữ yên, **nhấn rồi nhả** | Yêu cầu lấy `moc_truoc` |
+| Vàng | Giữ nguyên tư thế ĐẦU nằm | Lấy 80 mẫu tĩnh phía trước |
+| Tím | Quay chậm từ ĐẦU nằm → **dựng đứng** → **ĐUÔI nằm**; dừng yên trên mặt đỡ sau rồi **nhấn, nhả** | Thu gyro cho lượt chuyển trước → sau, kết thúc trong 30 s |
+| Vàng | Giữ ĐUÔI nằm | Lấy 80 mẫu phía sau, tính ma trận và kiểm tra chất lượng |
+| Trắng | Dựng trở lại gần góc đặt khởi động, giữ yên; không cần bấm | In góc theo độ/rad và chờ 80 mẫu đạt tư thế |
+| Cam sau calib | Chờ bản dữ liệu runtime đầu tiên; xem `FIRMWARE imuAck-20261109` | Setup đã xong nhưng chưa xác nhận dữ liệu runtime |
+| Xanh lá sau calib | Xem `ready`, `angleValid`, tuổi mẫu và lỗi | Bản trạng thái hiện có vượt kiểm tra an toàn, không tự arm |
+| Đỏ sau calib | Đọc `frame`, `irqSeq`, tuổi mẫu, I²C và lỗi trên Serial | Dữ liệu/trạng thái runtime lỗi hoặc quá hạn; đây không phải yêu cầu làm lại calib bằng nút |
+| Đỏ + `CALIB LOI` | Dựng lại tư thế tham chiếu, hai bánh cùng cao, giữ yên rồi nhấn nhả | Bắt đầu lại từ đo bias |
+| Đỏ + `BOOT ERROR` | Đọc lỗi, xử lý kết nối/cấu hình rồi reset | Nút không sửa được lỗi khởi tạo |
 
-Trong bước tím, hãy lật **thân xe**, không xoay hai bánh để chúi trước/sau, không
-quay đầu xe để đổi hướng. Nên mất khoảng 2–4 s để chuyển trái sang phải. Giữ
-nguyên cách đỡ thân để trục quay bám theo trục dọc. Tránh kéo dây hoặc bấm nút
-làm thân xoay thêm. Các khoảng thời gian ở trên là hướng dẫn thao tác, không phải
-bằng chứng phép đo đã đạt.
+Hướng chuyển ở tím phải đi **qua tư thế đứng**, không lật qua tư thế úp ngược.
+Nên chuyển chậm và liên tục trong khoảng 4–8 giây. Tránh xoay đầu xe sang hướng khác
+hoặc làm khung lắc sang hai bên. Motor vẫn tắt; bạn đang xoay thân bằng tay.
 
-Nút lọc dội 35 ms. Một xác nhận cần nhấn và nhả đều ổn định; giữ nút qua bước
-kế tiếp không tự xác nhận bước đó. Sau `READY`, nút hiện chỉ kết thúc vai trò
-calib: **chưa có chức năng arm, disarm hoặc dừng khẩn bằng nút này**.
+Một xác nhận cần nhấn và nhả ổn định qua debounce 35 ms. Giữ nút qua bước sau
+không tự xác nhận bước đó. Rung ngắn ở phép đo tĩnh chỉ làm firmware thu lại;
+không cần bấm liên tục. `CALIB_WAIT` là đang chờ dữ liệu đủ yên.
 
-LED xanh lá hiện chỉ biểu thị khởi tạo hoàn tất, **không đổi theo lỗi hay trạng
-thái arm trong lúc chạy**. Theo dõi Serial để biết trạng thái thực.
+## 5. Kiểm tra góc và đọc lỗi sau calib
 
-## 5. Nếu dừng ở LED trắng hoặc báo lỗi
-
-LED trắng kiểm tra:
+Sau khi fit, Serial in các trục/ma trận và kết quả hai mốc cùng góc tích phân
+gyro để đối chiếu. Ở bước trắng, `CALIB_RETURN` hiển thị cả rad và độ.
+Dựng gần góc đặt hiện tại; firmware yêu cầu:
 
 ```text
 abs(pitch - gocCanBang_rad) <= 0,10 rad ≈ 5,73°
@@ -92,21 +114,40 @@ abs(norm(accel) - g)       <= 0,50 m/s²
 80 mẫu liên tiếp đạt điều kiện
 ```
 
-Serial in `CALIB_RETURN pitch=... roll=... target=... rad` mỗi khoảng 500 ms.
-Hãy dựa vào giá trị này để đưa thân về gần `target`. Nếu ban đầu giữ lệch 6°,
-thuật toán giữ lệch đó nên có thể cần đưa xe thẳng hơn mới qua bước trắng.
-Đây chỉ là kiểm tra tư thế khởi động; nó không xác nhận trọng tâm đã ở trên trục bánh.
+Bước trắng chỉ kiểm tư thế khởi động. Nó không xác nhận trọng tâm nằm trên trục
+bánh hoặc xe sẽ đứng được khi thả tay. Với hai mốc chuẩn, nếu ban đầu giữ chúi
+6° thì số đo vẫn khoảng 6°; cần dựng về gần góc đặt mới qua bước trắng.
 
-Các phép lấy mốc tĩnh đợi 150 ms, cần 80 mẫu trong 2,5 s, phương sai gia tốc tổng
-không vượt `0,04 (m/s²)²`. Lượt quay cần ít nhất 40 mẫu chuyển động hợp lệ;
-trục gyro chính phải chiếm ít nhất 95% năng lượng; góc tích phân phải khớp hai
-mốc trong 0,35 rad. Tư thế đầu cần pitch trong khoảng ±8,63° theo phép kiểm
-tra hình học. Các ngưỡng là giá trị khởi đầu đang dùng trong code.
+Sau `READY`, khi EN vẫn tắt, kiểm chứng độc lập bằng một góc nhỏ:
+**hạ ĐẦU thì theta dương, hạ ĐUÔI thì theta âm, trở lại cùng tư thế thì số đo
+phải trở lại gần giá trị trước đó**. Nếu sai dấu hoặc lệch lặp lại lớn, không
+arm; kiểm tra hướng thao tác, mặt đỡ và PCB cố định rồi reset/calib lại. Thử
+góc khác hai mốc đã dùng để tránh chỉ kiểm lại chính dữ liệu fit.
 
-Nếu báo lỗi sau lượt tím: kiểm tra có lật đúng trái → phải, giữ đúng trục dọc,
-hai đầu đủ nghiêng và đã giữ yên trong các bước vàng. Nếu `BOOT ERROR: ICM20602`,
-kiểm tra SDA10, SCL11, CS9 ở HIGH, SA08 ở LOW, nguồn, GND và điện trở kéo lên I²C.
-Driver yêu cầu `WHO_AM_I = 0x12`.
+UI xử lý hai mốc gần ±90° bằng vector. Bộ ước lượng cân bằng/PID chỉ được đưa
+vào làm việc khi xe trở lại gần đứng; không dùng bước nằm ngang để yêu cầu arm.
+Pitch Euler có suy biến gần ±90° nên không dùng số góc runtime ở tư thế nằm
+để khẳng định phép đo động đang chính xác.
+
+Các mốc tĩnh chờ 500 ms, cần 80 mẫu ổn định trong tối đa 30 s; tổng phương sai
+accel ≤0,04 (m/s²)², độ lệch chuẩn gyro lớn nhất ≤0,5°/s. Lỗi I²C được báo riêng;
+không có mẫu mới 500 ms là lỗi dữ liệu. Xem
+[bảng lỗi ICM_BOOT/CALIB_WAIT](SUA_LOI_CALIB_VA_KIEM_TRA_ICM_KHOI_DONG.md).
+Cửa sổ góc nằm trong `CalibConfig.h` là80–92° **sau khi fit và đổi hệ**,
+dư 2° ở phía 90° cho nhiễu/mặt đỡ. Nó không bảo đảm hai góc thật thuộc80–92° và
+không phải sai số được bảo đảm. Trục chính cần ≥95% năng lượng, ít nhất 40 mẫu
+chuyển động và tổng góc ≥2,5 rad. So khớp góc/vector dùng ngưỡng 0,15 rad.
+Đỏ sau lượt tím có thể do quay sai trục/chiều, hai mốc không đủ nằm, mẫu bị gián
+đoạn hoặc góc gyro không khớp hai mốc; đọc dòng lỗi cụ thể trước `CALIB LOI`.
+
+Từ bản `imuAck-20261109`, LED sau calib được cập nhật theo snapshot runtime:
+cam khi chưa có báo cáo, xanh khi kiểm tra an toàn dữ liệu hiện tại và các lỗi đều
+hợp lệ, đỏ khi có lỗi/quá hạn. `ready` và `angleValid` được kiểm lại theo thời điểm in;
+góc lưu quá 20 ms không còn hợp lệ. Chẩn đoán có queue riêng nên `irqSeq`,
+`imuLate` và `readStatus` vẫn giúp kiểm tra khi mẫu góc bị bỏ. Xanh không tự chứng minh `canArm`, góc/gyro đã đủ
+điều kiện bật, hoặc cấu hình motor đã xác nhận. Nút vẫn chỉ phục vụ calib, chưa
+có chức năng arm/disarm/dừng khẩn sau READY. Nếu đỏ sau READY, đọc
+[chẩn đoán runtime](CHAN_DOAN_IMU_RUNTIME_2026-11-09.md), không nhấn nút để mong xóa lỗi.
 
 ## 6. Kích hoạt cân bằng sau calib
 
@@ -116,7 +157,9 @@ Driver yêu cầu `WHO_AM_I = 0x12`.
    `mucDirTienBanhPhaiCao = false` vẫn cần kiểm chứng trên xe.
 2. Khi đã xác minh phần cứng, đặt `daXacNhanCauHinhPhanCungMotor = true` trong
    `MotorConfig.h`, build/nạp lại. Không sửa cờ chỉ để vượt lỗi khi chưa kiểm tra.
-3. Chạy lại calib, chờ xanh lá + `READY`. Giữ xe gần góc đặt, ít rung, trên giá
+3. Chạy lại calib, xác nhận `FIRMWARE imuAck-20261109` và `READY`; chờ dữ liệu
+   runtime hợp lệ (LED xanh, `ready=none`, `angleValid=1`, tuổi mẫu còn mới).
+   Giữ xe gần góc đặt, ít rung, trên giá
    thử có thể đỡ thân nếu chiều điều khiển sai.
 4. Gửi riêng `a` qua Serial **sau READY**. Byte Serial còn chờ trong giai đoạn
    calib bị xóa trước khi READY để không phát lại lệnh cũ.
@@ -150,9 +193,9 @@ toán tự tìm góc cân bằng hay lưu góc vừa tìm bằng nút.
 | Muốn sửa | File / hàm |
 | --- | --- |
 | Chân, cực tính nút, chân LED | `include/config/PinConfig.h` |
-| Bật UI, thứ tự màu RGB | `include/config/CalibConfig.h` |
+| Bật UI, thứ tự màu RGB, cửa sổ góc nằm và dung sai khớp gyro | `include/config/CalibConfig.h` |
 | Debounce, thời hạn, số mẫu tĩnh, màu, lời nhắc | `src/calib/UI_Calib.cpp` |
-| Điều kiện nhận lượt lật, PCA và dựng ma trận | `lib/estimation/HieuChuanQuayNgang.cpp` |
+| Điều kiện nhận lượt lật, PCA và dựng ma trận | `lib/estimation/HieuChuanNghiengDoc.cpp` |
 | Góc cơ học mong muốn | `include/config/ControlConfig.h` |
 | Giới hạn góc arm/ngã | `include/config/SafetyConfig.h` |
 | Cực tính DIR/EN, vi bước và xác nhận phần cứng | `include/config/MotorConfig.h` |
@@ -166,3 +209,14 @@ trong [báo cáo lắp IMU](BAO_CAO_BU_LECH_LAP_IMU.md).
 Xem [báo cáo sơ đồ, flow và tính toán](DOI_CHIEU_SO_DO_VA_FLOW_CALIB.md) và
 [danh mục hàm](DANH_MUC_HAM.md) để đi sâu vào chương trình.
 
+
+## 8. Kết quả lưu của bản 08/11/2026
+
+Kết quả này thuộc bản 08/11. Bản runtime `imuAck-20261109` đã build và chạy sáu
+nhóm native PASS; boot/UI/runtime 265 điều kiện. Chưa upload/thử xe; xem
+[kết quả và cách đọc log mới](CHAN_DOAN_IMU_RUNTIME_2026-11-09.md).
+Build và sáu nhóm native PASS; calib pitch 2.038 kiểm tra, boot/UI 44 kiểm tra.
+Nhóm pitch có 45 góc gá, ba mức mốc 80°/85°/90° và ba góc tham chiếu, cùng các ca
+không đạt/không quan sát được sai mốc. RAM 57.044 byte, flash 476.206 byte.
+Chưa upload hoặc kiểm chứng độ chính xác trên xe thật; cần làm phép kiểm góc
+độc lập và độ lặp theo bước5 sau khi nạp.

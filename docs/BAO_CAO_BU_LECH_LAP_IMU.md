@@ -5,10 +5,10 @@ ICM20605 là tên gõ nhầm. Driver, WHO_AM_I và hệ số chuyển đổi kh�
 Mã mới nằm ở `HeTrucImu`, `ImuMountConfig` và `ComplementaryEstimator`.
 
 **Phân biệt hai cách hiệu chuẩn:** phần công cụ offline/two-vector trong báo cáo
-này cần tư thế thân chuẩn thẳng đã biết. UI nút/LED hiện mặc định dùng lượt lật
-trái–phải, giữ trục dọc đo từ gyro để không xóa pitch người đang đỡ. Không áp dụng
+này cần tư thế thân chuẩn thẳng đã biết. UI nút/LED hiện mặc định dùng ĐẦU →
+đứng → ĐUÔI; trục quay từ gyro và trục tiến từ hiệu hai mốc nằm. Không áp dụng
 giả thiết “gravity mốc đầu là Z thân” cho UI này. Xem
-[báo cáo sơ đồ và calib mới](DOI_CHIEU_SO_DO_VA_FLOW_CALIB.md) cùng
+[báo cáo calib ĐẦU/ĐUÔI](CALIB_DAU_DUOI_VA_KIEM_CHUNG_GOC_2026-11-08.md) cùng
 [hướng dẫn thao tác](HUONG_DAN_UI_CALIB.md). Cấu hình `ImuMountConfig.h` chỉ là
 nguồn ma trận runtime khi `batUiCalib = false`; góc cân bằng cơ học luôn xác định riêng.
 

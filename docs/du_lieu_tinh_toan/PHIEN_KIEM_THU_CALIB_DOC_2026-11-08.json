@@ -1,0 +1,44 @@
+{
+  "ngay": "2026-11-08",
+  "pham_vi": "calib_dau_duoi_nam80_90_vector",
+  "build": {
+    "ket_qua": "PASS",
+    "moi_truong": "lolin_s3_mini",
+    "ram_bytes": 57044,
+    "flash_app_bytes": 476206,
+    "firmware_sha256": "4620c4682e7976ef98682e424d8686ff2e3d0ed610e455620d3e5ab369f65ceb"
+  },
+  "native_tests": {
+    "ket_qua": "PASS",
+    "so_nhom": 6,
+    "control": 14507,
+    "watchdog": 19,
+    "loc_di_chuyen": 169,
+    "he_truc_vector": 3114,
+    "calib_pitch": 2038,
+    "boot_ui_retry": 44,
+    "boot_ui_in_goc_mau_dau": "PASS"
+  },
+  "calib_pitch": {
+    "so_goc_lap": 45,
+    "goc_moc_doi_xung_deg": [
+      80,
+      85,
+      90
+    ],
+    "goc_nguoi_giu_deg": [
+      -6,
+      0,
+      6
+    ],
+    "moc80_90_lech_zero5deg_da_kiem": true,
+    "khong_bao_dam_zero_khi_thieu_chuan_co_khi": true
+  },
+  "da_upload": false,
+  "da_thu_tren_xe": false,
+  "motor_hardware_confirmed": false,
+  "lien_ket_markdown": {
+    "so_da_kiem": 146,
+    "so_thieu": 0
+  }
+}

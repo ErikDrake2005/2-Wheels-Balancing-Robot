@@ -2,7 +2,7 @@
 
 > Cập nhật lọc và di chuyển 03/11/2026: [ICM20602](BAO_CAO_ICM20602_LOC_NHIEU.md), [MKS42C/17HS4401S](BAO_CAO_MKS42C_17HS4401S.md). Runtime không DMP; PT1 chỉ nhánh D; có lệnh di chuyển có hạn; R01 đã sửa.
 
-Cập nhật theo rà soát **05/11/2026**. Cách nạp/vận hành nằm trong
+Cập nhật theo rà soát **08/11/2026**. Cách nạp/vận hành nằm trong
 [hướng dẫn sử dụng](HUONG_DAN_SU_DUNG.md); trạng thái hoàn thành nằm trong
 [checklist](CHECKLIST_TINH_NANG.md). Phần giải thích toàn bộ hàm được tra cứu ở
 [danh mục hàm](DANH_MUC_HAM.md).
@@ -151,26 +151,43 @@ sau khi đã xác nhận dấu góc và gyro phù hợp với cách lắp cảm 
 
 ### Phân biệt ba việc hiệu chỉnh
 
-1. **Bias gyro:** `hieuChinhConQuay(500)` lấy trung bình khi cảm biến đứng yên.
+1. **Bias gyro:** `hieuChinhConQuay(500)` lấy trung bình một khoảng đứng yên;
+   `ThongKeMauImu` kiểm phương sai gyro/gia tốc. Khoảng rung bị bỏ và thu lại trong
+   30 s. Trước calib, `kiemTraSauKhoiDong()` xác nhận ID/cấu hình và 32 mẫu mới.
    Lật xe không phải cách đo bias; lượt lật chỉ bắt đầu sau khi đã trừ bias.
-2. **Góc gá sensor so với khung:** `HieuChuanQuayNgang::themMau()` tích lũy ma trận
-   năng lượng gyro và tổng góc. `tinhMaTran()` tìm trục X chính bằng power iteration,
-   chọn dấu từ lượt trái sang phải, rồi tính `Y=normalize(g_ref×X)`, `Z=X×Y`.
-   Ma trận có ba hàng X/Y/Z đổi cả accel lẫn gyro sang hệ xe.
+2. **Góc gá sensor so với khung:** `HieuChuanNghiengDoc::themMau()` tích lũy
+   moment gyro XYZ và tổng góc của lượt ĐẦU nằm → qua đứng → ĐUÔI nằm.
+   `tinhMaTran()` tìm Y bằng power iteration; tổng góc lượt trước → sau ngược +Y.
+   Lấy `d=a_sau-a_truoc`, `X=normalize(d-Y*dot(Y,d))`, `Z=X×Y`.
+   Ma trận ba hàng X/Y/Z đổi cả accel lẫn gyro sang hệ xe.
 3. **Góc cân bằng cơ học:** `gocCanBang_rad` là mục tiêu nền của vòng điều khiển.
    Người đang đỡ xe tạo thêm lực nên tư thế họ gọi là thẳng chưa cho biết mục tiêu
    cân bằng thực. UI không tự ghi biến này; mặc định 0 cần kiểm tra/chỉnh riêng.
 
-Giữ X từ chuyển động khung giúp giữ pitch ban đầu. Ví dụ người giữ xe nghiêng dọc
-6° thì calib không tự biến số đo đó thành 0°. Roll 0 vẫn lấy từ tư thế tham chiếu;
-đặt hai bánh cùng độ cao và lật quanh trục dọc thật của khung. Bước LED trắng chỉ
-đợi 80 mẫu đứng yên gần góc đặt (`|pitch-target|≤0,10 rad`, `|roll|≤0,10 rad`).
-Nó không đo được trọng tâm hoặc chứng minh xe sẽ tự cân bằng khi buông tay.
+ĐẦU là hướng tiến do người dùng chọn và đánh dấu; ĐUÔI đối diện. Hạ ĐẦU là pitch
+dương, hạ ĐUÔI là pitch âm. Thao tác quay quanh trục nối hai bánh. Gyro Y là tốc
+độ quay quanh Y; khi PCB đặt xéo chuyển động có thể xuất hiện trên cả gyro XYZ,
+nên không chọn cứng sensor Y và không lấy accel Y làm góc pitch.
+
+Hai mốc nằm đúng hình học cho phép giữ pitch ban đầu khác0 vì gravity người giữ
+không bị dùng để đặt Z. Nếu cả hai góc thật đều trong 80–90°, sai mốc có thể tới
+khoảng ±5° khi một bên 80° bên kia 90°. Cửa sổ 80–92° sau fit không xác minh góc thật. Sai lệch này không tự lộ
+ra qua các góc fit đối xứng. Cần mặt đỡ/đồ gá chuẩn theo khung để đo lặp lại đúng.
+
+Mốc gần±90° được xử lý bằng vector; không đưa estimator/PID cân bằng vào hoạt
+động khi xe còn nằm. LED trắng đợi80 mẫu đứng yên gần góc đặt
+(`|pitch-target|≤0,10 rad`, `|roll|≤0,10 rad`), có log góc theo độ/rad. Sau READY
+và khi EN vẫn tắt, chúi đầu góc nhỏ phải báo theta dương, ngả sau phải âm; trở về
+cùng tư thế phải gần số đo cũ. Nó không đo trọng tâm hoặc chứng minh xe tự cân bằng.
 
 `HeTrucImu::tuHaiVector()` là phương pháp offline khác, dùng gravity ở **tư thế
-chuẩn đã biết** và gyro nghiêng tiến. Không thay phép dựng UI bằng hàm đó, vì
-nó sẽ đặt phương Z theo gravity của tư thế đang giữ và làm mất pitch tham chiếu.
-Xem [UI_Calib](HUONG_DAN_UI_CALIB.md) và [báo cáo flow](DOI_CHIEU_SO_DO_VA_FLOW_CALIB.md).
+chuẩn đã biết** và gyro nghiêng tiến. UI hai mốc hiện không dùng hàm đó vì nó đặt
+Z theo gravity của tư thế người giữ. Xem [UI_Calib](HUONG_DAN_UI_CALIB.md) và
+[báo cáo ĐẦU/ĐUÔI](CALIB_DAU_DUOI_VA_KIEM_CHUNG_GOC_2026-11-08.md).
+
+Kiểm chứng 08/11/2026: sáu nhóm native và build PASS, gồm 2.038 kiểm tra calib pitch
+và 44 kiểm tra boot/UI. Chưa upload hoặc đo trên xe; mặt chuẩn và dấu motor vẫn
+phải kiểm chứng thực tế.
 
 ## 5. Các phần tiếp theo cần đọc
 

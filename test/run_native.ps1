@@ -10,6 +10,7 @@ try {
     & $TrinhBienDich -std=c++17 -O2 -Wall -Wextra -Werror -static -Iinclude -Isrc `
         -Ilib/controllers -Ilib/estimation -Ilib/kinematics `
         test/native/control_tests.cpp lib/controllers/AnglePidController.cpp `
+        lib/controllers/BoDieuKhienBanhVongKin.cpp `
         lib/controllers/CascadeController.cpp lib/estimation/ComplementaryEstimator.cpp `
         lib/kinematics/DifferentialDrive.cpp lib/estimation/HeTrucImu.cpp src/safety/SafetyMonitor.cpp `
         -o .cache/control_tests.exe
@@ -25,11 +26,22 @@ try {
     & $TrinhBienDich -std=c++17 -O2 -Wall -Wextra -Werror -static -Iinclude -Isrc `
         -Ilib/controllers -Ilib/estimation -Ilib/kinematics `
         test/native/filter_motion_tests.cpp lib/controllers/AnglePidController.cpp `
+        lib/controllers/BoDieuKhienBanhVongKin.cpp `
         lib/controllers/CascadeController.cpp lib/estimation/ComplementaryEstimator.cpp `
         lib/kinematics/DifferentialDrive.cpp lib/estimation/HeTrucImu.cpp -o .cache/filter_motion_tests.exe
     if ($LASTEXITCODE -ne 0) { throw 'Filter/motion test compilation failed' }
     & ./.cache/filter_motion_tests.exe
     if ($LASTEXITCODE -ne 0) { throw 'Filter/motion tests failed' }
+    & $TrinhBienDich -std=c++17 -O2 -Wall -Wextra -Werror -static `
+        "-DCAU_HINH_PHAN_CUNG_DONG_CO=LoaiPhanCungDongCo::TMC_MT" -Iinclude -Isrc `
+        -Ilib/controllers -Ilib/estimation -Ilib/kinematics `
+        test/native/filter_motion_tests.cpp lib/controllers/AnglePidController.cpp `
+        lib/controllers/BoDieuKhienBanhVongKin.cpp `
+        lib/controllers/CascadeController.cpp lib/estimation/ComplementaryEstimator.cpp `
+        lib/kinematics/DifferentialDrive.cpp lib/estimation/HeTrucImu.cpp -o .cache/filter_motion_tmc_tests.exe
+    if ($LASTEXITCODE -ne 0) { throw 'TMC_MT filter/motion test compilation failed' }
+    & ./.cache/filter_motion_tmc_tests.exe
+    if ($LASTEXITCODE -ne 0) { throw 'TMC_MT filter/motion tests failed' }
     & $TrinhBienDich -std=c++17 -O2 -Wall -Wextra -Werror -static -Iinclude -Isrc -Ilib/estimation `
         test/native/imu_alignment_tests.cpp lib/estimation/HeTrucImu.cpp `
         lib/estimation/ComplementaryEstimator.cpp src/safety/SafetyMonitor.cpp `
@@ -38,9 +50,17 @@ try {
     & ./.cache/imu_alignment_tests.exe
     if ($LASTEXITCODE -ne 0) { throw 'IMU alignment tests failed' }
     & $TrinhBienDich -std=c++17 -O2 -Wall -Wextra -Werror -static -Iinclude -Ilib/estimation `
-        test/native/calib_roll_tests.cpp lib/estimation/HieuChuanQuayNgang.cpp `
-        lib/estimation/HeTrucImu.cpp -o .cache/calib_roll_tests.exe
+        test/native/calib_pitch_tests.cpp lib/estimation/HieuChuanNghiengDoc.cpp `
+        lib/estimation/HeTrucImu.cpp lib/estimation/ComplementaryEstimator.cpp -o .cache/calib_pitch_tests.exe
     if ($LASTEXITCODE -ne 0) { throw 'Calibration test compilation failed' }
-    & ./.cache/calib_roll_tests.exe
+    & ./.cache/calib_pitch_tests.exe
     if ($LASTEXITCODE -ne 0) { throw 'Calibration tests failed' }
+    & $TrinhBienDich -std=c++17 -O2 -Wall -Wextra -Werror -static `
+        -Itest/native/imu_stubs -Iinclude -Isrc -Ilib/imu/src -Ilib/estimation `
+        test/native/imu_boot_calib_tests.cpp lib/imu/src/Icm20602Driver.cpp `
+        src/calib/UI_Calib.cpp lib/estimation/HieuChuanNghiengDoc.cpp lib/estimation/HeTrucImu.cpp `
+        -o .cache/imu_boot_calib_tests.exe
+    if ($LASTEXITCODE -ne 0) { throw 'IMU boot/calibration test compilation failed' }
+    & ./.cache/imu_boot_calib_tests.exe
+    if ($LASTEXITCODE -ne 0) { throw 'IMU boot/calibration tests failed' }
 } finally { $env:PATH = $duongDanCu; Pop-Location }

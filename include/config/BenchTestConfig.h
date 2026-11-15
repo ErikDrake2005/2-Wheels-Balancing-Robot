@@ -8,7 +8,7 @@
 // - En = L trên cả hai MKS, phù hợp mucBatMotorCao = false;
 // - STEP/DIR/EN có mức logic tương thích và nối đúng;
 // - hai bánh được nhấc khỏi mặt đất, có thể ngắt nguồn motor.
-constexpr bool choPhepBatMotorThu = false;
+constexpr bool choPhepBatMotorThu = true;
 
 // Giá trị THỬ cho độ rộng tín hiệu, chưa phải giới hạn đã xác nhận của MKS.
 // Đối chiếu manual đúng phiên bản trước khi bật công suất motor.

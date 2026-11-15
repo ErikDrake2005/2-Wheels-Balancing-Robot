@@ -1,0 +1,43 @@
+{
+  "ngay": "2026-11-09",
+  "firmware": "imuAck-20261109",
+  "build": {
+    "ket_qua": "PASS",
+    "moi_truong": "lolin_s3_mini",
+    "ram_bytes": 57052,
+    "flash_app_bytes": 478170,
+    "firmware_sha256": "e9d66b16feb387fabe75254324a69844d60cbaa5b262fc43c808e2ea4576219f"
+  },
+  "native_tests": {
+    "ket_qua": "PASS",
+    "so_nhom": 6,
+    "control": 14507,
+    "watchdog": 19,
+    "loc_di_chuyen": 169,
+    "he_truc_vector": 3114,
+    "calib_pitch": 2038,
+    "boot_ui_runtime": 265
+  },
+  "log_nguoi_dung": {
+    "nguoi_dung_xac_nhan_ban_cu": true,
+    "so_dong": 67,
+    "chuoi_goc_lap_lai": true,
+    "sha256": "b6554c9e8f0b4300d175fa14f26bb793fb7b700ab29ad7a9ceacb9090e6a452e"
+  },
+  "runtime": {
+    "int_latch": true,
+    "burst_bytes": 15,
+    "co_status_ack": true,
+    "doc_xong_truoc_us": 5000,
+    "poll_phuc_hoi_khong_publish_goc": true,
+    "queue_chan_doan_rieng": true
+  },
+  "khong_noi_nguong_Safety": true,
+  "i2c_timeout_ms": 2,
+  "da_upload": false,
+  "da_thu_tren_xe": false,
+  "lien_ket_markdown": {
+    "so_da_kiem": 158,
+    "so_thieu": 0
+  }
+}

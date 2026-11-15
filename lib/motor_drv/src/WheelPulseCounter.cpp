@@ -2,7 +2,18 @@
 #include "config/MotorConfig.h"
 #include "config/PinConfig.h"
 #include "driver/gpio.h"
+#include "driver/uart.h"
 #include "esp_timer.h"
+#include <algorithm>
+#include <cmath>
+
+namespace {
+constexpr uart_port_t congUartMksTrai = UART_NUM_1;
+constexpr uart_port_t congUartMksPhai = UART_NUM_2;
+constexpr int kichThuocBoDemUart = 256;
+constexpr uint32_t soXungBuocMoiVongMks =
+    static_cast<uint32_t>(soBuocDayDuMoiVongDongCo) * static_cast<uint32_t>(soViBuocDauVaoMks);
+}
 
 bool WheelPulseCounter::beginAxis(Axis& trucBanh, int chanXung, int chanChieu, bool mucTienCao) {
     pcnt_unit_config_t cauHinhBoDem{};
@@ -31,10 +42,57 @@ bool WheelPulseCounter::beginAxis(Axis& trucBanh, int chanXung, int chanChieu, b
     return true;
 }
 
+bool WheelPulseCounter::beginUartMks() {
+    if (_uartSanSang) return true;
+    if (!batUartEncoderMks || chanUartTxMks < 0 || chanUartRxMksTrai < 0 || chanUartRxMksPhai < 0) {
+        return true;
+    }
+    uart_config_t cauHinhUart{};
+    cauHinhUart.baud_rate = static_cast<int>(tocDoBaudUartMks_bps);
+    cauHinhUart.data_bits = UART_DATA_8_BITS;
+    cauHinhUart.parity = UART_PARITY_DISABLE;
+    cauHinhUart.stop_bits = UART_STOP_BITS_1;
+    cauHinhUart.flow_ctrl = UART_HW_FLOWCTRL_DISABLE;
+    cauHinhUart.source_clk = UART_SCLK_DEFAULT;
+
+    // UART1: sở hữu GPIO1 (TX chung phát lệnh tới cả 2 MKS) và GPIO3 (RX1 nhận từ MKS 1).
+    if (uart_param_config(congUartMksTrai, &cauHinhUart) != ESP_OK ||
+        uart_set_pin(congUartMksTrai, chanUartTxMks, chanUartRxMksTrai,
+                     UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE) != ESP_OK ||
+        uart_driver_install(congUartMksTrai, kichThuocBoDemUart, kichThuocBoDemUart, 0, nullptr, 0) != ESP_OK) {
+        return false;
+    }
+
+    // UART2: chỉ nhận trên GPIO4 (RX2 nhận từ MKS 2), không chiếm chân TX.
+    if (uart_param_config(congUartMksPhai, &cauHinhUart) != ESP_OK ||
+        uart_set_pin(congUartMksPhai, UART_PIN_NO_CHANGE, chanUartRxMksPhai,
+                     UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE) != ESP_OK ||
+        uart_driver_install(congUartMksPhai, kichThuocBoDemUart, 0, 0, nullptr, 0) != ESP_OK) {
+        uart_driver_delete(congUartMksTrai);
+        return false;
+    }
+
+    gpio_pulldown_dis(static_cast<gpio_num_t>(chanUartRxMksTrai));
+    gpio_pullup_en(static_cast<gpio_num_t>(chanUartRxMksTrai));
+    gpio_pulldown_dis(static_cast<gpio_num_t>(chanUartRxMksPhai));
+    gpio_pullup_en(static_cast<gpio_num_t>(chanUartRxMksPhai));
+    uart_flush_input(congUartMksTrai);
+    uart_flush_input(congUartMksPhai);
+
+    _uartSanSang = true;
+    return true;
+}
+
 bool WheelPulseCounter::begin() {
     if (_daSanSang || _banhTrai.boDem || _banhPhai.boDem) return false;
+    // Chỉ khởi tạo PCNT trước để giữ nguyên GPIO3 làm nút xác nhận trong suốt quá trình Calib ICM20602.
+    // Ngay sau khi Calib hoàn tất, RobotApp::begin() sẽ gọi beginUartMks() để chuyển GPIO3 sang UART1 RX.
     _daSanSang = beginAxis(_banhTrai, chanStepTrai, chanDirTrai, mucDirTienBanhTraiCao) &&
-             beginAxis(_banhPhai, chanStepPhai, chanDirPhai, mucDirTienBanhPhaiCao);
+                 beginAxis(_banhPhai, chanStepPhai, chanDirPhai, mucDirTienBanhPhaiCao);
+    if (!_daSanSang) return false;
+    // Kiểm tra đọc thử PCNT ngay sau khởi tạo khi EN vẫn đang tắt (mục M3).
+    const WheelPulseFrame khungKiemTra = read();
+    _daSanSang = khungKiemTra.hopLe && khungKiemTra.trai == 0 && khungKiemTra.phai == 0;
     return _daSanSang; // Khởi tạo lỗi: giữ motor disabled, reset sau khi sửa.
 }
 
@@ -49,12 +107,159 @@ bool WheelPulseCounter::readAxis(Axis& trucBanh) {
     return true;
 }
 
+void WheelPulseCounter::resetAxis(Axis& trucBanh) {
+    if (trucBanh.boDem) {
+        pcnt_unit_clear_count(trucBanh.boDem);
+    }
+    trucBanh.soDemTruoc = 0;
+    trucBanh.tongSoXung = 0;
+    trucBanh.daCoMauUart = false;
+    trucBanh.xungEncoderGoc = 0;
+    trucBanh.xungEncoderTuongDuongBuoc = 0;
+    trucBanh.xungPcntLucHoi = 0;
+    trucBanh.buTuKeMucTieu = 0;
+    trucBanh.buTuKeDaLoc = 0.0;
+    trucBanh.buTuKe = 0;
+}
+
+void WheelPulseCounter::reset() {
+    if (!_daSanSang) return;
+    resetAxis(_banhTrai);
+    resetAxis(_banhPhai);
+    _lanHoiUartTruoc_us = 0;
+    _thoiDiemDocTruoc_us = 0;
+    if (_uartSanSang) {
+        uart_flush_input(congUartMksTrai);
+        uart_flush_input(congUartMksPhai);
+    }
+}
+
+namespace {
+uint8_t chonDiaChiHoiMks(bool daKhoa, uint8_t diaChiHoatDong, uint8_t& chiSoThu,
+                         uint8_t uuTien, uint8_t duPhong) {
+    if (daKhoa && diaChiHoatDong != 0) return diaChiHoatDong;
+    const uint8_t danhSach[3] = {uuTien, duPhong, static_cast<uint8_t>(0xE0)};
+    const uint8_t ketQua = danhSach[chiSoThu % 3u];
+    chiSoThu = static_cast<uint8_t>((chiSoThu + 1u) % 3u);
+    return ketQua;
+}
+} // namespace
+
+void WheelPulseCounter::docKenhUartMks(int congUart, Axis& trucBanh,
+                                       uint8_t diaChiUuTien, uint8_t diaChiDuPhong,
+                                       bool chieuTienDuong) {
+    const auto port = static_cast<uart_port_t>(congUart);
+    size_t soByteCoSan = 0;
+    if (uart_get_buffered_data_len(port, &soByteCoSan) != ESP_OK || soByteCoSan < 8u) return;
+
+    uint8_t boDem[64]{};
+    const int soByteDoc = uart_read_bytes(
+        port, boDem, soByteCoSan > sizeof(boDem) ? sizeof(boDem) : soByteCoSan, 0);
+    if (soByteDoc < 8) return;
+
+    const uint8_t ungVien[3] = {diaChiUuTien, diaChiDuPhong, static_cast<uint8_t>(0xE0)};
+    const unsigned soUngVien = trucBanh.daKhoaDiaChi ? 1u : 3u;
+
+    // Tìm khung trả lời 0x30 hợp lệ mới nhất trong bộ đệm FIFO.
+    for (int viTri = soByteDoc - 8; viTri >= 0; --viTri) {
+        for (unsigned i = 0; i < soUngVien; ++i) {
+            const uint8_t diaChiThu = trucBanh.daKhoaDiaChi ? trucBanh.diaChiHoatDong : ungVien[i];
+            MauEncoderMksUart mau = BoGiaiMaUartMks::giaiMaEncoder0x30(
+                &boDem[viTri], 8u, diaChiThu, soXungEncoderMksMoiVong);
+            if (!mau.hopLe && (soByteDoc - viTri) >= 9) {
+                mau = BoGiaiMaUartMks::giaiMaEncoder0x30(
+                    &boDem[viTri], 9u, diaChiThu, soXungEncoderMksMoiVong);
+            }
+            if (mau.hopLe) {
+                if (!trucBanh.daKhoaDiaChi) {
+                    trucBanh.daKhoaDiaChi = true;
+                    trucBanh.diaChiHoatDong = diaChiThu;
+                }
+                ++trucBanh.soKhungUart;
+                const int64_t xungCoHuong = chieuTienDuong ? mau.tongXungEncoder : -mau.tongXungEncoder;
+                if (!trucBanh.daCoMauUart) {
+                    trucBanh.xungEncoderGoc = xungCoHuong;
+                    trucBanh.xungEncoderTuongDuongBuoc = 0;
+                    trucBanh.buTuKeMucTieu = 0;
+                    trucBanh.buTuKeDaLoc = 0.0;
+                    trucBanh.buTuKe = 0;
+                    trucBanh.daCoMauUart = true;
+                } else {
+                    const int64_t deltaEncoder = xungCoHuong - trucBanh.xungEncoderGoc;
+                    const int64_t xungTuKeQuyDoi = BoGiaiMaUartMks::quyDoiSangXungBuoc(
+                        deltaEncoder, soXungBuocMoiVongMks, soXungEncoderMksMoiVong);
+                    trucBanh.xungEncoderTuongDuongBuoc = xungTuKeQuyDoi;
+                    if (batBuTruotUartMksVaoXung) {
+                        trucBanh.buTuKeMucTieu = xungTuKeQuyDoi - trucBanh.tongSoXung;
+                    }
+                }
+                return;
+            }
+        }
+    }
+}
+
+void WheelPulseCounter::serviceUartMks(uint64_t thoiDiem_us) {
+    if (!_uartSanSang) return;
+    docKenhUartMks(congUartMksTrai, _banhTrai, diaChiUartMksTrai, diaChiUartMksPhai, chieuTienEncoderMksTraiDuong);
+    docKenhUartMks(congUartMksPhai, _banhPhai, diaChiUartMksPhai, diaChiUartMksTrai, chieuTienEncoderMksPhaiDuong);
+
+    // Luân phiên 2.5 ms trái / 2.5 ms phải trên đường TX chung (GPIO1) để không dính khung hỏi.
+    const uint32_t nuaChuKy_us = chuKyDocUartMks_us >= 2000u ? (chuKyDocUartMks_us / 2u) : 2500u;
+    if (_lanHoiUartTruoc_us == 0 || (thoiDiem_us - _lanHoiUartTruoc_us) >= nuaChuKy_us) {
+        _lanHoiUartTruoc_us = thoiDiem_us;
+        uint8_t diaChiHoi = diaChiUartMksTrai;
+        if (!_luotHoiPhai) {
+            _banhTrai.xungPcntLucHoi = _banhTrai.tongSoXung;
+            diaChiHoi = chonDiaChiHoiMks(_banhTrai.daKhoaDiaChi, _banhTrai.diaChiHoatDong,
+                                         _banhTrai.chiSoThuDiaChi, diaChiUartMksTrai, diaChiUartMksPhai);
+        } else {
+            _banhPhai.xungPcntLucHoi = _banhPhai.tongSoXung;
+            diaChiHoi = chonDiaChiHoiMks(_banhPhai.daKhoaDiaChi, _banhPhai.diaChiHoatDong,
+                                         _banhPhai.chiSoThuDiaChi, diaChiUartMksPhai, diaChiUartMksTrai);
+        }
+        _luotHoiPhai = !_luotHoiPhai;
+
+        uint8_t khungHoi[3]{};
+        BoGiaiMaUartMks::taoKhungHoi(diaChiHoi, BoGiaiMaUartMks::maLenhDocEncoderCarry, khungHoi);
+        uart_write_bytes(congUartMksTrai, khungHoi, sizeof(khungHoi));
+    }
+}
+
+void WheelPulseCounter::capNhatLocBuTuKe(Axis& trucBanh, double dt_s) {
+    if (!batBuTruotUartMksVaoXung || !trucBanh.daCoMauUart || dt_s <= 0.0) return;
+    const double alpha = dt_s / (static_cast<double>(hangSoLocBuUartMks_s) + dt_s);
+    double buMoi = trucBanh.buTuKeDaLoc +
+        alpha * (static_cast<double>(trucBanh.buTuKeMucTieu) - trucBanh.buTuKeDaLoc);
+    const double buocToiDa = static_cast<double>(tocDoBuUartToiDa_buocTrenGiay) * dt_s;
+    buMoi = std::clamp(buMoi, trucBanh.buTuKeDaLoc - buocToiDa, trucBanh.buTuKeDaLoc + buocToiDa);
+    trucBanh.buTuKeDaLoc = buMoi;
+    trucBanh.buTuKe = static_cast<int64_t>(std::llround(trucBanh.buTuKeDaLoc));
+}
+
 WheelPulseFrame WheelPulseCounter::read() {
     WheelPulseFrame khungDuLieu{};
     if (!_daSanSang || !readAxis(_banhTrai) || !readAxis(_banhPhai)) return khungDuLieu;
-    khungDuLieu.trai = _banhTrai.tongSoXung;
-    khungDuLieu.phai = _banhPhai.tongSoXung;
-    khungDuLieu.thoiDiem_us = static_cast<uint64_t>(esp_timer_get_time());
+    const uint64_t thoiDiem_us = static_cast<uint64_t>(esp_timer_get_time());
+    serviceUartMks(thoiDiem_us);
+    double dt_s = 0.0;
+    if (_thoiDiemDocTruoc_us != 0 && thoiDiem_us > _thoiDiemDocTruoc_us) {
+        dt_s = std::clamp(static_cast<double>(thoiDiem_us - _thoiDiemDocTruoc_us) * 1e-6, 0.0, 0.05);
+    }
+    _thoiDiemDocTruoc_us = thoiDiem_us;
+    capNhatLocBuTuKe(_banhTrai, dt_s);
+    capNhatLocBuTuKe(_banhPhai, dt_s);
+    khungDuLieu.trai = _banhTrai.tongSoXung + _banhTrai.buTuKe;
+    khungDuLieu.phai = _banhPhai.tongSoXung + _banhPhai.buTuKe;
+    khungDuLieu.thoiDiem_us = thoiDiem_us;
+    khungDuLieu.encoderTrai = _banhTrai.xungEncoderTuongDuongBuoc;
+    khungDuLieu.encoderPhai = _banhPhai.xungEncoderTuongDuongBuoc;
+    khungDuLieu.soKhungUartTrai = _banhTrai.soKhungUart;
+    khungDuLieu.soKhungUartPhai = _banhPhai.soKhungUart;
+    khungDuLieu.diaChiUartTrai = _banhTrai.diaChiHoatDong;
+    khungDuLieu.diaChiUartPhai = _banhPhai.diaChiHoatDong;
+    khungDuLieu.coUartTrai = _banhTrai.daCoMauUart;
+    khungDuLieu.coUartPhai = _banhPhai.daCoMauUart;
     khungDuLieu.hopLe = true;
     return khungDuLieu;
 }

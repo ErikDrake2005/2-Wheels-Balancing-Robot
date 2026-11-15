@@ -152,6 +152,14 @@ bool MksServo42CPair::advance(Axis& a, double dtSeconds, uint64_t now) {
     const bool desiredForward = a.tocDoMucTieu >= 0.0f;
     const Mode desiredMode = hz >= tanSoChayLienTucToiThieu_hz ? Mode::Continuous : Mode::Sparse;
 
+    if (a.giaiDoan == Phase::Running && a.cheDo == Mode::Sparse &&
+        desiredMode == Mode::Continuous && desiredForward == a.dangTien &&
+        hz > 0.0f && now >= _sanSangBat_us && now >= a.choDen_us && a.step.isPauseReady()) {
+        a.cheDo = Mode::Continuous;
+        a.tanSoDaCauHinh_hz = hz;
+        return a.step.setFrequency(hz);
+    }
+
     if (a.giaiDoan == Phase::Running &&
         (hz == 0.0f || desiredForward != a.dangTien || desiredMode != a.cheDo)) {
         return requestPause(a);
@@ -161,8 +169,10 @@ bool MksServo42CPair::advance(Axis& a, double dtSeconds, uint64_t now) {
         a.giaiDoan = Phase::Idle;
         a.cheDo = Mode::None;
         a.tanSoDaCauHinh_hz = 0.0f;
-        // Không phát bù phần bước cũ sau khi đổi chiều/chế độ.
-        a.tichLuyBuoc = 0.0;
+        // Chỉ xóa phần bước lẻ khi dừng hẳn hoặc đảo chiều.
+        if (hz == 0.0f || desiredForward != a.dangTien) {
+            a.tichLuyBuoc = 0.0;
+        }
     }
     if (hz == 0.0f) {
         a.tichLuyBuoc = 0.0;
@@ -170,7 +180,10 @@ bool MksServo42CPair::advance(Axis& a, double dtSeconds, uint64_t now) {
         a.cheDo = Mode::None;
         return true;
     }
-    if (desiredForward != a.dangTien) return writeDirection(a, desiredForward);
+    if (desiredForward != a.dangTien) {
+        a.tichLuyBuoc = 0.0;
+        return writeDirection(a, desiredForward);
+    }
     if (a.giaiDoan == Phase::DirSetup) {
         if (now < a.choDen_us) return true;
         a.giaiDoan = Phase::Idle;
@@ -188,8 +201,7 @@ bool MksServo42CPair::advance(Axis& a, double dtSeconds, uint64_t now) {
             a.tanSoDaCauHinh_hz = hz;
             return true;
         }
-        a.tichLuyBuoc = 0.0;
-        return true; // Bắt đầu tích lũy từ service tiếp theo.
+        return true; // Tiếp tục tích lũy từ service tiếp theo.
     }
     if (a.cheDo == Mode::Continuous) {
         if (hz == a.tanSoDaCauHinh_hz) return true;

@@ -1,5 +1,9 @@
 # Đối chiếu sơ đồ chân và luồng hiệu chuẩn — 05/11/2026
 
+**Phiên bản 08/11/2026:** ánh xạ chân vẫn áp dụng, nhưng UI trái/phải và phần
+tính trục X từ gyro bên dưới thuộc bản cũ. UI hiện là ĐẦU nằm → đứng → ĐUÔI nằm;
+xem [quy trình và hình học mới](CALIB_DAU_DUOI_VA_KIEM_CHUNG_GOC_2026-11-08.md).
+
 ## Kết luận
 
 Firmware đã được sửa theo sơ đồ ESP32-S3 Super Mini được cung cấp. Người dùng
@@ -7,8 +11,11 @@ xác nhận **motor 1 là bánh phải, motor 2 là bánh trái**. Luồng calib
 trục dọc đo từ chuyển động khung xe, nên không xóa góc pitch người đang giữ.
 Góc cân bằng cơ học vẫn là thông số độc lập cần xác định trên xe thực.
 
-Build `lolin_s3_mini` và năm nhóm kiểm thử native đã đạt. Chưa nạp/chạy trên xe;
+Build `lolin_s3_mini` và sáu nhóm kiểm thử native đã đạt. Chưa nạp/chạy trên xe;
 kết quả phần mềm không xác nhận chiều motor, chất lượng tín hiệu hay ổn định cơ học.
+
+**Bổ sung sau phản hồi rung:** boot kiểm tra 32 mẫu ICM, phép đo tĩnh tự thu lại
+trong 30 s. [Chi tiết và bảng lỗi Serial](SUA_LOI_CALIB_VA_KIEM_TRA_ICM_KHOI_DONG.md).
 
 ## 1. Đối chiếu sơ đồ
 
@@ -80,7 +87,7 @@ là nhả nút khi cấp nguồn/reset, sau khi firmware vào UI mới nhấn.
 ```mermaid
 flowchart TD
     A[Reset / setup] --> B[Đặt EN tắt; chuẩn bị RGB và nút]
-    B --> C[Khởi tạo MCPWM, PCNT và ICM20602]
+    B --> C[LED cam: khởi tạo MCPWM, PCNT, ICM và kiểm tra 32 mẫu mới]
     C -->|Lỗi| E[BOOT ERROR; xử lý rồi reset]
     C --> D[Xanh dương: hai bánh cùng cao; nhấn nhả]
     D --> F[Vàng: bias gyro và gravity tham chiếu]
@@ -192,8 +199,8 @@ Các số dưới đây lấy từ code, là ngưỡng thiết kế ban đầu c
 | --- | --- | --- |
 | Tần số mẫu IMU | 200 Hz | Chu kỳ danh định 5 ms |
 | Bias gyro | 500 mẫu | Danh định 2,5 s, thêm thời gian I/O/chờ |
-| Mốc tĩnh | 80 mẫu, tối đa 2,5 s | Danh định 0,4 s, có thể lâu hơn theo polling/I²C |
-| Đợi sau xác nhận mốc | 150 ms | Giảm rung do thao tác nút |
+| Mốc tĩnh | 80 mẫu ổn định, tự thu lại trong 30 s | Danh định 0,4 s, có thể lâu hơn theo polling/I²C |
+| Đợi sau xác nhận mốc | 500 ms | Giảm rung do thao tác nút |
 | Đứng yên | gyro ≤0,06 rad/s; norm accel lệch g ≤0,5 m/s² | Từ chối chuyển động/rung lớn |
 | Phương sai accel tổng | ≤0,04 (m/s²)² | Áp dụng ba mốc tĩnh |
 | Mẫu gyro chuyển động | 0,07–2,5 rad/s, dt >0 và ≤20 ms | Loại quá chậm/nhanh hoặc khoảng mẫu bất thường |
@@ -254,12 +261,13 @@ Xem [báo cáo MKS42C và động cơ](BAO_CAO_MKS42C_17HS4401S.md).
 
 | Hạng mục | Kết quả |
 | --- | --- |
-| Build `pio run -e lolin_s3_mini` | PASS; RAM 57.044 byte, flash 469.974 byte |
+| Build `pio run -e lolin_s3_mini` | PASS; RAM 57.044 byte, flash 474.070 byte |
 | Native control | PASS; 14.507 checks |
 | Native watchdog | PASS; 19 checks |
 | Native filter/motion | PASS; 169 checks |
 | Native IMU mounting/vector | PASS; 3.114 checks |
 | Native UI roll calibration | PASS; 25 điều kiện, gồm 6 tổ hợp pitch ±6° và roll tham chiếu −4°/0°/+4° |
+| Native ICM boot/UI retry | PASS; 43 điều kiện với Wire, đồng hồ, nút/LED giả |
 | Kiểm tra sơ đồ ↔ macro ↔ MCPWM/PCNT | Mapping nhất quán, kiểm tra trùng chân lúc biên dịch |
 | Thử board / oscilloscope / xe thực | Chưa thực hiện |
 

@@ -1,0 +1,706 @@
+/*
+  HUONG DAN NHANH - FILE DOC LAP, KHONG CAN THU VIEN NGOAI
+  Board: ESP32-S3, Arduino-ESP32 3.x (khong dung core 2.x).
+  Arduino IDE: chon ESP32S3 Dev Module, USB CDC On Boot = Enabled neu dung USB CDC.
+  Luu file arduino.ino trong thu muc arduino truoc khi mo/nạp.
+
+  CHAN NOI: EN chung=2; TX chung=1 -> RX cua ca hai MKS.
+  M1: STEP=6, DIR=5, RX ESP=3 <- TX MKS1.
+  M2: STEP=13, DIR=12, RX ESP=4 <- TX MKS2. Noi chung GND.
+  Hai TX cua MKS phai tach rieng; khong noi chung chung voi nhau.
+  MKS V1.1: En=L, MStep=32, dong co 1.8 do (200 full-step/vong).
+  Baud=115200 ca hai; UartAddr M1=0xE0, M2=0xE1.
+  CtrMode=CR_vFOC de dung vong kin trong driver; CR_OPEN neu thu vong ngoai.
+  Lenh step/baud/addr trong sketch chi doi cau hinh ESP, khong ghi menu MKS.
+
+  Khoi dong: EN TAT. Mac dinh STEP_ESTIMATE: dem lenh xung, KHONG do truc thuc.
+  Serial Monitor: 115200; nhan Newline, CRLF va No line ending (cho 120ms).
+  Phai thay ma MKS_DUAL_GPTIMER_V2_20261112 sau khi nap va mo dung cong USB.
+  USB truc tiep ESP32-S3: Tools > USB CDC On Boot = Enabled, chon lai cong sau nap.
+  Thu nhanh: e -> g 90 -> r -45; m 2 -> g 90; pair 180 -180 de quay ca hai.
+  e bat ca hai va giu tai vi tri hien tai; gui dich g/r/pair SAU lenh e.
+  Neu quen e, chuong trinh bao EN OFF va tu choi lenh dich, khong am tham luu lenh.
+  d tat ca hai ngay; stop giam toc; h xem menu; status xem UART; plot xem do thi.
+
+  DUNG ENCODER THUC: khi dung, go d, doi >=1 giay, go status.
+  Neu UARTok tang lien tuc o ca hai motor, chon:
+    m 1 -> feedback uart
+    m 2 -> feedback uart
+    e -> pair 90 -90
+  Truoc khi chay xa, thu g 5 va xem encoder tang cung chieu lenh.
+  Neu chieu encoder nguoc: d -> sign -1 -> doi UARTok tang -> z -> e -> g 5.
+  Thay DIR_INVERT[] neu can doi chieu co khi, encoderSign[] neu can doi chieu do.
+  feedback step khi dung de chon lai uoc luong xung. Khong tu chuyen nguon khi mat UART.
+  UART V1.1 lenh 0x30 la 4 byte, 65536 don vi/vong tren giao thuc.
+  Unwrap chi dung neu truc di chuyen <180 do giua hai mau hop le.
+  Nguong dung: mat UART >100ms khi dung encoder; tre dieu khien >20ms;
+  ISR du phong tat EN neu main loop ngung >50ms; loi bam vi tri >30 do/150ms.
+  clear khi dung de xoa loi, e de bat lai. Khong luu PID vao flash.
+
+  Mac dinh: Kp=8, Ki=0, Kd=0.05; Vmax=720 do/s; Amax=900 do/s2.
+  Diem khoi dau de thu, can tinh chinh theo tai, quan tinh va dong motor thuc te.
+  Phat xung DDS/GPTimer 50kHz: HIGH=20us, LOW>=20us, tan so lenh toi da20kHz.
+  Tan so trung binh chinh xac; canh xung luong tu 20us, can do bang logic analyzer.
+  Khong coi day la chuong trinh can bang hoan chinh cua robot.
+
+  KIEM CHUNG: mo phong C++ qua voi hai truc, dao chieu khi dang chay,
+  gioi han gia toc, dung dich, encoder rollover, mat UART va watchdog.
+  Chua thu tren motor that. File nay da duoc kiem tra bien dich ESP32-S3.
+*/
+/*
+  ESP32-S3 / Arduino-ESP32 3.x: two MKS Servo42C V1.1, STEP/DIR.
+  EN=2 active LOW; M1 STEP=6 DIR=5 RX=3; M2 STEP=13 DIR=12 RX=4;
+  TX=1 shared to both MKS RX. Keep the two MKS TX wires SEPARATE.
+  Both drivers must use the same baud. Set unique UART addresses E0 / E1.
+  MKS: CR_vFOC for its internal closed loop, or CR_OPEN for external loop.
+  MStep must match this sketch; En=L. No automatic writes to driver settings.
+
+  50 kHz GPTimer ISR, integer phase accumulator, pulse width 20 us.
+  Mean frequency is precise; edge quantization/jitter is up to one 20 us tick.
+  This is a position test, not the complete robot balance controller.
+  UART 0x30 V1.1: [address, encoder_hi, encoder_lo, additive_checksum].
+  Wire representation is 65536 units/rev, independently of sensor resolution.
+*/
+#include <Arduino.h>
+#include "driver/gptimer.h"
+#include "driver/uart.h"
+#include "soc/gpio_struct.h"
+#include "esp_timer.h"
+
+#include <cmath>
+#include <cstdint>
+
+namespace motion {
+inline double limit(double x, double lo, double hi) {
+    return x < lo ? lo : (x > hi ? hi : x);
+}
+inline double approach(double x, double target, double delta) {
+    return x + limit(target - x, -delta, delta);
+}
+inline int32_t encoderDelta(uint16_t now, uint16_t before) {
+    int32_t d = int32_t(now) - int32_t(before);
+    if (d > 32767) d -= 65536;
+    if (d < -32768) d += 65536;
+    return d;
+}
+struct Profile {
+    double position = 0, velocity = 0;
+    void update(double goal, double maxSpeed, double accel, double dt) {
+        const double error = goal - position;
+        // Discrete stopping envelope: reserve one control interval for braking.
+        const double adt = accel * dt;
+        const double allowed = std::sqrt(adt * adt + 2 * accel * std::fabs(error)) - adt;
+        const double wanted = (error < 0 ? -1 : 1) * (allowed < maxSpeed ? allowed : maxSpeed);
+        velocity = approach(velocity, wanted, adt);
+        position += velocity * dt;
+        if (std::fabs(goal - position) < 1e-6 && std::fabs(velocity) <= adt) {
+            position = goal;
+            velocity = 0;
+        }
+    }
+};
+// Same unsigned accumulator used by the ISR. No minimum STEP frequency.
+inline bool phaseTick(uint32_t &phase, uint32_t increment) {
+    const uint32_t before = phase;
+    phase += increment;
+    return phase < before;
+}
+inline uint32_t frequencyIncrement(double hz, uint32_t tickHz) {
+    return uint32_t(limit(hz / tickHz, 0, 0.4) * 4294967296.0 + 0.5);
+}
+} // namespace motion
+
+#include <cstdlib>
+#include <cstring>
+#include <cstdarg>
+#include <cstdio>
+
+constexpr const char *FIRMWARE_ID = "MKS_DUAL_GPTIMER_V2_20261112";
+// Queue console output: a slow/disconnected monitor must not stop motor control.
+char consoleBuffer[2048];
+size_t consoleRead = 0, consoleWrite = 0;
+void logPrintf(const char *format, ...) {
+    char message[384];
+    va_list args;
+    va_start(args, format);
+    const int result = vsnprintf(message, sizeof(message), format, args);
+    va_end(args);
+    if (result <= 0) return;
+    const size_t length = size_t(result) < sizeof(message) ? size_t(result) : sizeof(message)-1;
+    const size_t freeBytes = (consoleRead + sizeof(consoleBuffer) - consoleWrite - 1) % sizeof(consoleBuffer);
+    if (length > freeBytes) return; // Drop a whole optional line, never block.
+    for (size_t n=0; n<length; ++n) {
+        consoleBuffer[consoleWrite] = message[n];
+        consoleWrite = (consoleWrite+1) % sizeof(consoleBuffer);
+    }
+}
+void logLine(const char *message) { logPrintf("%s\n", message); }
+void drainConsole() {
+    if (!Serial) return;
+    const int available = Serial.availableForWrite();
+    if (available <= 0 || consoleRead == consoleWrite) return;
+    size_t length = consoleWrite > consoleRead ? consoleWrite-consoleRead : sizeof(consoleBuffer)-consoleRead;
+    if (length > size_t(available)) length = size_t(available);
+    if (length > 64) length = 64;
+    const size_t sent = Serial.write(reinterpret_cast<const uint8_t*>(consoleBuffer+consoleRead), length);
+    consoleRead = (consoleRead+sent) % sizeof(consoleBuffer);
+}
+
+constexpr int PIN_EN = 2, PIN_TX = 1;
+constexpr int STEP_PINS[2] = {6, 13}, DIR_PINS[2] = {5, 12}, RX_PINS[2] = {3, 4};
+constexpr uart_port_t UART_PORT = UART_NUM_1;
+constexpr uint32_t TICK_HZ = 50000, CONTROL_US = 5000;
+constexpr uint32_t FEEDBACK_STALE_US = 100000;
+constexpr double MAX_STEP_HZ = 20000;
+constexpr bool DIR_INVERT[2] = {false, false};
+// Change sign per motor if positive STEP/DIR motion DECREASES encoder angle.
+int encoderSign[2] = {1, 1};
+
+struct PulseState {
+    uint32_t phase = 0, increment = 0;
+    int direction = 1, actualDirection = 1;
+    int64_t steps = 0;
+    bool high = false;
+};
+PulseState pulse[2];
+portMUX_TYPE pulseMux = portMUX_INITIALIZER_UNLOCKED;
+gptimer_handle_t pulseTimer = nullptr;
+volatile bool outputsEnabled = false;
+bool pulseReady = false;
+volatile uint32_t lastControlTick = 0, tickCount = 0;
+volatile bool watchdogTripped = false;
+
+struct Params {
+    double kp = 8, ki = 0, kd = 0.05;
+    double maxSpeed = 720, accel = 900, outputAccel = 1800;
+    double deadband = 0.15, integralLimit = 60;
+    uint32_t stepsPerRev = 6400;
+};
+struct Axis {
+    Params cfg;
+    motion::Profile ref;
+    double target = 0, position = 0, velocity = 0, command = 0, integral = 0;
+    double encoderAngle = 0, observerOffset = 0;
+    int64_t zeroSteps = 0;
+    uint16_t rawEncoder = 0;
+    uint32_t lastEncoderUs = 0, goodFrames = 0, timeouts = 0, badFrames = 0;
+    uint32_t followingErrorSince = 0;
+    uint8_t address = 0xE0;
+    bool encoderReady = false, useEncoder = false, settled = true;
+};
+Axis axes[2];
+int selected = 0;
+bool faulted = false, plot = false, uartReady = false;
+char faultReason[80] = "";
+
+// Shared lock makes direction, count and command changes coherent on both cores.
+bool IRAM_ATTR pulseISR(gptimer_handle_t, const gptimer_alarm_event_data_t *, void *) {
+    portENTER_CRITICAL_ISR(&pulseMux);
+    ++tickCount;
+    if (outputsEnabled && uint32_t(tickCount - lastControlTick) > TICK_HZ / 20) {
+        outputsEnabled = false; // Main loop stalled >50 ms: independent stop.
+        watchdogTripped = true;
+        GPIO.out_w1ts = uint32_t(1) << PIN_EN;
+    }
+    for (int i = 0; i < 2; ++i) {
+        PulseState &s = pulse[i];
+        const uint32_t mask = uint32_t(1) << STEP_PINS[i];
+        const bool wasHigh = s.high;
+        GPIO.out_w1tc = mask;
+        s.high = false;
+        if (!outputsEnabled || s.increment == 0) {
+            s.phase = 0;
+            continue;
+        }
+        if (s.direction != s.actualDirection) {
+            // A full LOW tick for DIR hold, another for DIR setup.
+            if (!wasHigh) {
+                s.actualDirection = s.direction;
+                const bool highDir = (s.direction > 0) != DIR_INVERT[i];
+                if (highDir) GPIO.out_w1ts = uint32_t(1) << DIR_PINS[i];
+                else GPIO.out_w1tc = uint32_t(1) << DIR_PINS[i];
+            }
+            s.phase = 0;
+            continue;
+        }
+        const uint32_t oldPhase = s.phase;
+        s.phase += s.increment;
+        if (s.phase < oldPhase) {
+            GPIO.out_w1ts = mask;
+            s.high = true;
+            s.steps += s.actualDirection;
+        }
+    }
+    portEXIT_CRITICAL_ISR(&pulseMux);
+    return false;
+}
+
+int64_t readSteps(int i) {
+    portENTER_CRITICAL(&pulseMux);
+    const int64_t value = pulse[i].steps;
+    portEXIT_CRITICAL(&pulseMux);
+    return value;
+}
+double stepAngle(int i, int64_t steps) {
+    return double(steps - axes[i].zeroSteps) * 360.0 / axes[i].cfg.stepsPerRev;
+}
+void writeSpeed(int i, double speed) {
+    const uint32_t inc = motion::frequencyIncrement(std::fabs(speed) * axes[i].cfg.stepsPerRev / 360.0, TICK_HZ);
+    portENTER_CRITICAL(&pulseMux);
+    pulse[i].increment = inc;
+    pulse[i].direction = speed < 0 ? -1 : 1;
+    portEXIT_CRITICAL(&pulseMux);
+}
+void disableOutputs() {
+    portENTER_CRITICAL(&pulseMux);
+    outputsEnabled = false;
+    GPIO.out_w1ts = uint32_t(1) << PIN_EN;
+    for (int i = 0; i < 2; ++i) pulse[i].increment = 0;
+    portEXIT_CRITICAL(&pulseMux);
+    // Let any in-flight HIGH pulse finish; ISR returns STEP LOW within 20 us.
+    for (auto &a : axes) { a.command = 0; a.integral = 0; }
+}
+void trip(const char *why) {
+    disableOutputs();
+    faulted = true;
+    snprintf(faultReason, sizeof(faultReason), "%s", why);
+    logPrintf("FAULT: %s. EN OFF. Go status de xem chi tiet.\n", faultReason);
+}
+bool initPulseTimer() {
+    gptimer_config_t cfg{};
+    cfg.clk_src = GPTIMER_CLK_SRC_DEFAULT;
+    cfg.direction = GPTIMER_COUNT_UP;
+    cfg.resolution_hz = 1000000;
+    cfg.intr_priority = 3;
+    if (gptimer_new_timer(&cfg, &pulseTimer) != ESP_OK) return false;
+    gptimer_event_callbacks_t callbacks{};
+    callbacks.on_alarm = pulseISR;
+    if (gptimer_register_event_callbacks(pulseTimer, &callbacks, nullptr) != ESP_OK) return false;
+    gptimer_alarm_config_t alarm{};
+    alarm.alarm_count = 1000000 / TICK_HZ;
+    alarm.flags.auto_reload_on_alarm = true;
+    return gptimer_set_alarm_action(pulseTimer, &alarm) == ESP_OK &&
+           gptimer_enable(pulseTimer) == ESP_OK && gptimer_start(pulseTimer) == ESP_OK;
+}
+
+// One outstanding request, RX GPIO switched only after reply/timeout.
+struct UartPoll {
+    bool waiting = false;
+    int axis = 0, nextAxis = 0;
+    uint8_t bytes[4]{};
+    size_t length = 0;
+    uint32_t sentUs = 0, nextUs = 0;
+    int64_t sentSteps = 0;
+} poller;
+uint32_t baudrate = 115200;
+uint32_t responseTimeoutUs() {
+    // At 9600 a request+reply needs ~7.3 ms on wire.
+    return 6000 + uint32_t(70000000ULL / baudrate);
+}
+bool initUart(uint32_t baud) {
+    if (uartReady) uart_driver_delete(UART_PORT);
+    uartReady = false;
+    uart_config_t cfg{};
+    cfg.baud_rate = baud;
+    cfg.data_bits = UART_DATA_8_BITS;
+    cfg.parity = UART_PARITY_DISABLE;
+    cfg.stop_bits = UART_STOP_BITS_1;
+    cfg.flow_ctrl = UART_HW_FLOWCTRL_DISABLE;
+    cfg.source_clk = UART_SCLK_DEFAULT;
+    if (uart_param_config(UART_PORT, &cfg) != ESP_OK ||
+        uart_set_pin(UART_PORT, PIN_TX, RX_PINS[0], UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE) != ESP_OK ||
+        uart_driver_install(UART_PORT, 256, 0, 0, nullptr, 0) != ESP_OK) return false;
+    baudrate = baud;
+    uartReady = true;
+    poller = UartPoll{};
+    return true;
+}
+void acceptEncoder(int i, uint16_t raw, uint32_t sampleUs, int64_t sampleSteps) {
+    Axis &a = axes[i];
+    if (!a.encoderReady) {
+        a.rawEncoder = raw;
+        // Initial encoder origin is aligned with the command origin at acquisition.
+        a.encoderAngle = stepAngle(i, sampleSteps);
+        a.velocity = 0;
+        a.encoderReady = true;
+    } else {
+        const int32_t delta = motion::encoderDelta(raw, a.rawEncoder) * encoderSign[i];
+        const double elapsed = uint32_t(sampleUs - a.lastEncoderUs) * 1e-6;
+        if (elapsed > 0) {
+            const double deltaDeg = delta * (360.0 / 65536.0);
+            // Reject physically implausible samples, including most stale/misaligned frames.
+            if (std::fabs(deltaDeg) > a.cfg.maxSpeed * elapsed * 2 + 5) {
+                ++a.badFrames;
+                return;
+            }
+            a.encoderAngle += deltaDeg;
+            a.velocity += elapsed / (0.025 + elapsed) * (deltaDeg / elapsed - a.velocity);
+        }
+        a.rawEncoder = raw;
+    }
+    a.lastEncoderUs = sampleUs;
+    // Extrapolate between samples with emitted STEP; don't swap feedback origins.
+    a.observerOffset = a.encoderAngle - stepAngle(i, sampleSteps);
+    ++a.goodFrames;
+}
+void serviceUart(uint32_t now) {
+    if (!uartReady) return;
+    if (poller.waiting) {
+        uint8_t byte;
+        int budget = 32;
+        while (budget-- && uart_read_bytes(UART_PORT, &byte, 1, 0) == 1) {
+            poller.bytes[poller.length++] = byte;
+            if (poller.length == 4) {
+                const auto *b = poller.bytes;
+                if (b[0] == axes[poller.axis].address && uint8_t(b[0] + b[1] + b[2]) == b[3]) {
+                    acceptEncoder(poller.axis, uint16_t(b[1]) << 8 | b[2], poller.sentUs, poller.sentSteps);
+                    poller.waiting = false;
+                    // Give the previous device time to finish TX before changing RX.
+                    poller.nextUs = now + 1000;
+                    break;
+                }
+                ++axes[poller.axis].badFrames;
+                memmove(poller.bytes, poller.bytes + 1, 3);
+                poller.length = 3;
+            }
+        }
+        if (poller.waiting && uint32_t(now - poller.sentUs) > responseTimeoutUs()) {
+            ++axes[poller.axis].timeouts;
+            poller.waiting = false;
+            poller.nextUs = now + responseTimeoutUs(); // Quarantine late replies.
+        }
+        return;
+    }
+    if (int32_t(now - poller.nextUs) < 0) return;
+    const int i = poller.nextAxis;
+    if (uart_set_pin(UART_PORT, PIN_TX, RX_PINS[i], UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE) != ESP_OK) {
+        trip("UART pin configuration failed"); return;
+    }
+    uart_flush_input(UART_PORT);
+    const uint8_t req[3] = {axes[i].address, 0x30, uint8_t(axes[i].address + 0x30)};
+    poller.sentSteps = readSteps(i);
+    poller.sentUs = now;
+    poller.axis = i;
+    poller.nextAxis = 1 - i;
+    poller.length = 0;
+    if (uart_write_bytes(UART_PORT, req, sizeof(req)) != sizeof(req)) {
+        trip("UART request failed"); return;
+    }
+    poller.waiting = true;
+}
+
+void refreshPosition(int i) {
+    Axis &a = axes[i];
+    a.position = stepAngle(i, readSteps(i)) + (a.useEncoder ? a.observerOffset : 0);
+}
+void holdCurrent(int i) {
+    Axis &a = axes[i];
+    refreshPosition(i);
+    a.target = a.ref.position = a.position;
+    a.ref.velocity = a.command = a.integral = 0;
+    a.followingErrorSince = 0;
+    a.settled = true;
+    writeSpeed(i, 0);
+}
+void enableOutputs() {
+    if (outputsEnabled) { logLine("EN ON: da bat, giu nguyen dich dang chay."); return; }
+    if (!pulseReady) { logLine("Pulse timer unavailable; restart after fixing initialization"); return; }
+    if (faulted) { logLine("FAULT: use clear while stopped, then e"); return; }
+    const uint32_t now = micros();
+    for (int i = 0; i < 2; ++i) {
+        if (axes[i].useEncoder && (!axes[i].encoderReady || uint32_t(now - axes[i].lastEncoderUs) > FEEDBACK_STALE_US)) {
+            logLine("Encoder missing/stale. Check status, baud and address."); return;
+        }
+        holdCurrent(i);
+    }
+    portENTER_CRITICAL(&pulseMux);
+    lastControlTick = tickCount;
+    outputsEnabled = true;
+    GPIO.out_w1tc = uint32_t(1) << PIN_EN;
+    portEXIT_CRITICAL(&pulseMux);
+    logLine("EN ON; targets held at current positions. Send g/r/pair next.");
+}
+void updateControl(double dt, uint32_t now) {
+    if (watchdogTripped) { watchdogTripped = false; trip("Control stalled >50ms"); }
+    portENTER_CRITICAL(&pulseMux);
+    lastControlTick = tickCount;
+    const bool enabled = outputsEnabled;
+    portEXIT_CRITICAL(&pulseMux);
+    if (enabled && dt > 0.020) { trip("Control deadline >20ms"); return; }
+    for (int i = 0; i < 2; ++i) {
+        Axis &a = axes[i];
+        refreshPosition(i);
+        if (!enabled) continue;
+        if (a.useEncoder && uint32_t(now - a.lastEncoderUs) > FEEDBACK_STALE_US) {
+            trip("UART feedback lost >100ms"); return;
+        }
+        const double maxSpeed = fmin(a.cfg.maxSpeed, MAX_STEP_HZ * 360.0 / a.cfg.stepsPerRev);
+        a.ref.update(a.target, maxSpeed, a.cfg.accel, dt);
+        const double goalError = a.target - a.position;
+        const bool refDone = std::fabs(a.target - a.ref.position) < 0.001 && std::fabs(a.ref.velocity) < 0.1;
+        if (a.settled && (std::fabs(goalError) > 2 * a.cfg.deadband || !refDone)) a.settled = false;
+        if (refDone && std::fabs(goalError) <= a.cfg.deadband &&
+            std::fabs(a.command) <= a.cfg.outputAccel * dt &&
+            (!a.useEncoder || std::fabs(a.velocity) < 2)) a.settled = true;
+        if (a.settled) { a.integral = a.command = 0; writeSpeed(i, 0); continue; }
+        const double error = a.ref.position - a.position;
+        if (a.useEncoder && std::fabs(error) > 30) {
+            if (!a.followingErrorSince) a.followingErrorSince = now;
+            if (uint32_t(now-a.followingErrorSince)>150000) {
+                trip("Encoder following error >30deg for 150ms; check sign/load"); return;
+            }
+        } else a.followingErrorSince = 0;
+        const double measuredVelocity = a.useEncoder ? a.velocity : a.command;
+        const double base = a.ref.velocity + a.cfg.kp * error + a.cfg.kd * (a.ref.velocity - measuredVelocity);
+        const double wanted = base + a.integral;
+        const double bounded = motion::limit(wanted, -maxSpeed, maxSpeed);
+        const double applied = motion::approach(a.command, bounded, a.cfg.outputAccel * dt);
+        // Integrate only when actuator can follow, or integral would unwind saturation.
+        if (std::fabs(wanted - applied) < 0.01 || error * (wanted - applied) < 0) {
+            a.integral = motion::limit(a.integral + a.cfg.ki * error * dt, -a.cfg.integralLimit, a.cfg.integralLimit);
+        }
+        a.command = applied;
+        writeSpeed(i, a.command);
+    }
+}
+
+const double testAngles[] = {90, 180, 0, -90, 0};
+bool testRunning = false;
+int testAxis = 0, testIndex = 0;
+uint32_t testSince = 0, testSettledSince = 0;
+void serviceTest(uint32_t now) {
+    if (!testRunning) return;
+    if (!outputsEnabled || faulted) { testRunning = false; return; }
+    if (uint32_t(now - testSince) > 15000000) { testRunning = false; trip("Test target timeout"); return; }
+    if (!axes[testAxis].settled) { testSettledSince = 0; return; }
+    if (!testSettledSince) testSettledSince = now;
+    if (uint32_t(now - testSettledSince) < 300000) return;
+    if (++testIndex == 5) { testRunning = false; logLine("Test complete"); return; }
+    axes[testAxis].target = testAngles[testIndex];
+    axes[testAxis].settled = false;
+    testSince = now; testSettledSince = 0;
+}
+void printStatus() {
+    logPrintf("FW=%s TIMER=%s ticks=%lu\n", FIRMWARE_ID, pulseReady ? "OK" : "FAILED", (unsigned long)tickCount);
+    logPrintf("EN=%d FAULT=%s baud=%lu selected=M%d\n", outputsEnabled, faulted ? faultReason : "none", (unsigned long)baudrate, selected + 1);
+    for (int i = 0; i < 2; ++i) {
+        const Axis &a = axes[i];
+        logPrintf("M%d STEP=%d DIR=%d emitted_steps=%lld\n", i+1, STEP_PINS[i], DIR_PINS[i], (long long)readSteps(i));
+        logPrintf("M%d %s addr=%02X target=%.3f ref=%.3f pos=%.3f err=%.3f cmd=%.2f UARTok=%lu timeout=%lu bad=%lu age=%lums\n",
+            i+1, a.useEncoder ? "ENCODER" : "STEP_ESTIMATE", a.address, a.target, a.ref.position, a.position,
+            a.target-a.position, a.command, (unsigned long)a.goodFrames, (unsigned long)a.timeouts,
+            (unsigned long)a.badFrames, a.encoderReady ? (unsigned long)(uint32_t(micros()-a.lastEncoderUs)/1000) : 999999UL);
+    }
+}
+bool motionAllowed() {
+    if (faulted) { logPrintf("FAULT: %s. Go clear khi dung, roi e.\n", faultReason); return false; }
+    if (!outputsEnabled) { logLine("EN OFF: go e truoc, sau do gui lai lenh g/r/pair/t."); return false; }
+    return true;
+}
+void help() {
+    logLine("m 1|2: select; g DEG / r DEG / DEG: target selected; pair DEG1 DEG2: both");
+    logLine("e: enable both holding current; d: disable both; stop: decelerate both");
+    logLine("z: zero selected while disabled; t: nonblocking selected-axis test");
+    logLine("p KP / i KI / d KD; v deg/s; a deg/s^2; db deg; step 16|32|64 (disabled)");
+    logLine("feedback uart|step (disabled); sign 1|-1 (disabled, then z)");
+    logLine("baud 9600|19200|38400|57600|115200; addr 0xE0 (disabled, selected axis)");
+    logLine("b: restart UART/clear encoder acquisition while disabled; clear: clear fault");
+    logLine("status; plot; h. Defaults: disabled, STEP_ESTIMATE. Select feedback uart after valid frames.");
+}
+bool parseNumber(const char *s, double &value) {
+    char *end = nullptr;
+    value = strtod(s, &end);
+    while (end && (*end == ' ' || *end == '\t')) ++end;
+    return end != s && end && !*end && std::isfinite(value);
+}
+bool stoppedForConfig() {
+    if (outputsEnabled) { logLine("Use d before changing hardware/feedback settings"); return false; }
+    return true;
+}
+void processCommand(char *line) {
+    // Bounded line parser: no readStringUntil(), no waits for test completion.
+    char *arg = strchr(line, ' ');
+    if (arg) { *arg++ = 0; while (*arg == ' ') ++arg; }
+    Axis &a = axes[selected];
+    if (!strcmp(line,"h") || !strcmp(line,"?")) { help(); return; }
+    if (!strcmp(line,"status")) { printStatus(); return; }
+    if (!strcmp(line,"plot")) { plot = !plot; return; }
+    if (!strcmp(line,"e")) { enableOutputs(); return; }
+    if (!strcmp(line,"d") && !arg) { testRunning = false; disableOutputs(); logLine("EN OFF: ca hai motor da tat."); return; }
+    if (!strcmp(line,"clear") && stoppedForConfig()) {
+        faulted = false; faultReason[0] = 0; watchdogTripped = false; return;
+    }
+    if (!strcmp(line,"stop")) {
+        testRunning = false;
+        for (auto &axis : axes) {
+            // Set endpoint at current command's braking distance, then use normal limiter.
+            axis.target = axis.position + axis.command * std::fabs(axis.command) / (2 * axis.cfg.accel);
+            axis.ref.position = axis.position; axis.ref.velocity = axis.command; axis.integral = 0;
+        }
+        return;
+    }
+    if (!strcmp(line,"t")) {
+        if (!outputsEnabled) { logLine("Use e first"); return; }
+        testAxis = selected; testIndex = 0; testRunning = true;
+        testSince = micros(); testSettledSince = 0; a.target = testAngles[0]; a.settled = false; return;
+    }
+    if (!strcmp(line,"pair") && arg) {
+        if (!motionAllowed()) return;
+        char *end = nullptr; double left = strtod(arg, &end), right;
+        if (end == arg || !std::isfinite(left) || !parseNumber(end, right) || std::fabs(left)>1e7 || std::fabs(right)>1e7) {
+            logLine("Invalid pair"); return;
+        }
+        testRunning = false; axes[0].target = left; axes[1].target = right;
+        axes[0].settled = axes[1].settled = false;
+        logPrintf("OK pair: M1=%.3f deg M2=%.3f deg\n", left, right); return;
+    }
+    if (!strcmp(line,"z") && stoppedForConfig()) {
+        poller.waiting=false; poller.nextUs=micros()+responseTimeoutUs();
+        a.zeroSteps = readSteps(selected); a.encoderAngle = a.observerOffset = 0;
+        a.velocity = 0; holdCurrent(selected); return;
+    }
+    if (!strcmp(line,"b") && stoppedForConfig()) {
+        for (auto &axis : axes) { axis.encoderReady = false; axis.goodFrames = 0; }
+        if (!initUart(baudrate)) trip("UART initialization failed");
+        return;
+    }
+    if (!strcmp(line,"feedback") && arg && stoppedForConfig()) {
+        if (!strcmp(arg,"uart")) {
+            if (!uartReady) { logLine("UART chua khoi tao. Kiem tra b/baud truoc."); return; }
+            if (!a.encoderReady || uint32_t(micros()-a.lastEncoderUs)>FEEDBACK_STALE_US || a.goodFrames<3) {
+                logLine("Need >=3 recent valid frames; check baud/addr/status"); return;
+            }
+            a.useEncoder = true;
+        } else if (!strcmp(arg,"step")) a.useEncoder = false;
+        else { logLine("feedback uart|step"); return; }
+        holdCurrent(selected); return;
+    }
+    if (!strcmp(line,"addr") && arg && stoppedForConfig()) {
+        char *end = nullptr; const long address = strtol(arg, &end, 0);
+        if (end==arg || *end || address<1 || address>255) { logLine("Invalid address"); return; }
+        a.address = uint8_t(address); a.encoderReady = false; a.goodFrames = 0;
+        poller.waiting = false; poller.nextUs = micros()+responseTimeoutUs(); return;
+    }
+    double value;
+    if (!parseNumber(arg ? arg : line, value)) { logLine("Invalid command/value; h for help"); return; }
+    if (!arg || !strcmp(line,"g") || !strcmp(line,"r")) {
+        if (!motionAllowed()) return;
+        const double goal = arg && !strcmp(line,"r") ? a.target+value : value;
+        if (std::fabs(goal)>1e7) { logLine("Target out of range"); return; }
+        testRunning = false; a.target = goal; a.settled = false;
+        logPrintf("OK M%d target=%.3f deg, EN ON\n", selected+1, goal);
+    } else if (!strcmp(line,"m") && (value==1 || value==2)) {
+        selected = int(value)-1; logPrintf("Da chon M%d STEP=%d DIR=%d\n", selected+1, STEP_PINS[selected], DIR_PINS[selected]);
+    }
+    else if (!strcmp(line,"p") && value>=0 && value<=100) a.cfg.kp = value;
+    else if (!strcmp(line,"i") && value>=0 && value<=20) { a.cfg.ki = value; a.integral = 0; }
+    else if (!strcmp(line,"d") && value>=0 && value<=5) a.cfg.kd = value;
+    else if (!strcmp(line,"v") && value>=1 && value<=MAX_STEP_HZ*360/a.cfg.stepsPerRev) a.cfg.maxSpeed = value;
+    else if (!strcmp(line,"a") && value>=10 && value<=10000) { a.cfg.accel=value; a.cfg.outputAccel=2*value; }
+    else if (!strcmp(line,"db") && value>=0.03 && value<=5) a.cfg.deadband = value;
+    else if (!strcmp(line,"step") && stoppedForConfig() && (value==16 || value==32 || value==64)) {
+        poller.waiting=false; poller.nextUs=micros()+responseTimeoutUs();
+        // Preserve angular coordinates when the STEP scale changes.
+        refreshPosition(selected); const double oldPosition = a.position;
+        a.zeroSteps = readSteps(selected); a.cfg.stepsPerRev = 200*uint32_t(value);
+        a.observerOffset = a.useEncoder ? oldPosition : 0;
+        a.encoderAngle = a.useEncoder ? oldPosition : 0;
+        a.cfg.maxSpeed = fmin(a.cfg.maxSpeed, MAX_STEP_HZ*360/a.cfg.stepsPerRev);
+        holdCurrent(selected);
+        logLine("Match MStep on MKS manually; origin reset in STEP mode.");
+    } else if (!strcmp(line,"sign") && stoppedForConfig() && (value==1 || value==-1)) {
+        poller.waiting=false; poller.nextUs=micros()+responseTimeoutUs();
+        encoderSign[selected]=int(value); a.encoderReady=false; a.goodFrames=0;
+    } else if (!strcmp(line,"baud") && stoppedForConfig() &&
+        (value==9600 || value==19200 || value==38400 || value==57600 || value==115200)) {
+        for (auto &axis : axes) { axis.encoderReady=false; axis.goodFrames=0; }
+        if (!initUart(uint32_t(value))) trip("UART initialization failed");
+    } else logLine("Invalid parameter/range; h for help");
+}
+
+char lineBuffer[128];
+size_t lineLength = 0;
+bool lineOverflow = false;
+uint32_t lastSerialByteUs = 0;
+void finishSerialLine() {
+    if (lineOverflow) logLine("Line too long; discarded");
+    else if (lineLength) {
+        lineBuffer[lineLength]=0;
+        char *start=lineBuffer;
+        while (*start==' ' || *start=='\t') ++start;
+        char *end=lineBuffer+lineLength;
+        while (end>start && (end[-1]==' ' || end[-1]=='\t')) *--end=0;
+        for (char *c=start; *c; ++c) if (*c>='A' && *c<='Z') *c+=('a'-'A');
+        if (*start) processCommand(start);
+    }
+    lineLength=0; lineOverflow=false;
+}
+void serviceSerial() {
+    int budget = 64;
+    while (budget-- && Serial.available()) {
+        const char c = char(Serial.read());
+        lastSerialByteUs=micros();
+        if (c=='\r' || c=='\n') {
+            finishSerialLine();
+            break; // At most one command per iteration.
+        }
+        if (lineLength+1<sizeof(lineBuffer)) lineBuffer[lineLength++]=c;
+        else lineOverflow=true;
+    }
+    if (lineLength && !Serial.available() && uint32_t(micros()-lastSerialByteUs)>=120000) finishSerialLine();
+}
+uint32_t lastControlUs = 0, lastTelemetryUs = 0;
+uint32_t lastHeartbeatUs = 0;
+bool serialWasConnected = false;
+void serviceConsole() {
+    const bool connected = bool(Serial);
+    if (connected && !serialWasConnected) {
+        consoleRead=consoleWrite=0;
+        logPrintf("\nFW=%s | GPTimer | build %s %s\n", FIRMWARE_ID, __DATE__, __TIME__);
+        logLine("Serial OK. Thu: status -> e -> g 90. Mac dinh EN OFF.");
+        if (faulted) logPrintf("FAULT: %s\n", faultReason);
+        help();
+    }
+    serialWasConnected=connected;
+    const uint32_t now=micros();
+    if (connected && !plot && uint32_t(now-lastHeartbeatUs)>=2000000) {
+        lastHeartbeatUs=now;
+        logPrintf("[%s] EN=%s FAULT=%s ticks=%lu M1steps=%lld M2steps=%lld\n", FIRMWARE_ID,
+            outputsEnabled ? "ON" : "OFF", faulted ? faultReason : "none", (unsigned long)tickCount,
+            (long long)readSteps(0), (long long)readSteps(1));
+    }
+    drainConsole();
+}
+void setup() {
+    pinMode(PIN_EN, OUTPUT); digitalWrite(PIN_EN, HIGH);
+    for (int i=0; i<2; ++i) {
+        pinMode(STEP_PINS[i], OUTPUT); digitalWrite(STEP_PINS[i], LOW);
+        pinMode(DIR_PINS[i], OUTPUT); digitalWrite(DIR_PINS[i], DIR_INVERT[i] ? LOW : HIGH);
+        axes[i].address=0xE0+i;
+    }
+    Serial.begin(115200);
+    pulseReady=initPulseTimer();
+    if (!pulseReady) trip("GPTimer initialization failed");
+    if (!initUart(baudrate)) logLine("UART init failed; STEP mode van dung duoc. Encoder chua san sang.");
+    lastControlUs=micros();
+}
+void loop() {
+    uint32_t now=micros();
+    if (uint32_t(now-lastControlUs)>=CONTROL_US) {
+        const double dt=uint32_t(now-lastControlUs)*1e-6;
+        lastControlUs=now;
+        updateControl(dt, now);
+    }
+    serviceUart(micros());
+    serviceSerial();
+    serviceTest(micros());
+    now=micros();
+    // Drop optional telemetry when USB is congested; do not block the control loop.
+    if (plot && uint32_t(now-lastTelemetryUs)>=100000) {
+        lastTelemetryUs=now;
+        const Axis &a=axes[selected];
+        logPrintf("Target:%.3f,Ref:%.3f,Pos:%.3f,Speed:%.2f\n", a.target,a.ref.position,a.position,a.command);
+    }
+    serviceConsole();
+    delay(1);
+}

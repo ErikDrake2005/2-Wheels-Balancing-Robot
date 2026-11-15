@@ -9,6 +9,7 @@ public:
     void khoiTao();
     void chay(MaTranQuayImu& ketQua);
     void baoSanSang() const;
+    void baoChoDuLieu() const;
     void baoLoi() const;
 private:
     Icm20602Driver& _camBien;
@@ -18,7 +19,8 @@ private:
     void dongBoNut();
     bool daXacNhan();
     void choXacNhan();
-    bool layGiaTocTinh(Vec3Imu& giaToc);
+    bool kiemTraLoiDoc(const KhungDuLieuImu& mau, uint32_t lanCoMau_ms, const char* buoc) const;
+    bool layGiaTocTinh(Vec3Imu& giaToc, const char* buoc);
     bool choVeThang(const HeTrucImu& heTruc);
     bool thuMotLuot(MaTranQuayImu& ketQua);
 };

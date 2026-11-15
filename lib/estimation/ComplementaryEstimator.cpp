@@ -1,10 +1,12 @@
 #include "ComplementaryEstimator.h"
 #include "config/ImuConfig.h"
 #include "config/SafetyConfig.h"
+#include "config/ControlConfig.h"
 #include <cmath>
 #include <algorithm>
 
-bool ComplementaryEstimator::update(const KhungDuLieuImu& khungDuLieu, TrangThaiXe& trangThaiXe) {
+bool ComplementaryEstimator::update(const KhungDuLieuImu& khungDuLieu, TrangThaiXe& trangThaiXe,
+                                    float giaTocTinhTien_mps2) {
     trangThaiXe.gocHopLe = false;
     trangThaiXe.giaTocTinCay = false;
     trangThaiXe.doTinCayGiaToc = 0;
@@ -13,25 +15,40 @@ bool ComplementaryEstimator::update(const KhungDuLieuImu& khungDuLieu, TrangThai
         !khungDuLieu.daHieuChinhConQuay || khungDuLieu.thoiDiemLayMau_us == 0) return false;
 
     // Cả accel và gyro được xoay cùng một R sau khi driver đổi đơn vị/trừ bias.
-    const Vec3Imu giaToc = _heTruc.chuyenSangXe(
+    const Vec3Imu giaTocDo = _heTruc.chuyenSangXe(
         {khungDuLieu.giaTocX_mps2,khungDuLieu.giaTocY_mps2,khungDuLieu.giaTocZ_mps2});
     const Vec3Imu gyro = _heTruc.chuyenSangXe(
         {khungDuLieu.tocDoGocX_radps,khungDuLieu.tocDoGocY_radps,khungDuLieu.tocDoGocZ_radps});
-    const float doLonGiaToc = doLonVecto(giaToc);
-    if (!vectoHuuHan(giaToc) || !vectoHuuHan(gyro) || !std::isfinite(doLonGiaToc)) return false;
+    const float doLonGiaToc = doLonVecto(giaTocDo);
+    if (!vectoHuuHan(giaTocDo) || !vectoHuuHan(gyro) || !std::isfinite(doLonGiaToc)) return false;
+    // Giới hạn cứng xét trên số đo thô: phát hiện cảm biến hỏng, không phụ thuộc phần bù.
     if (doLonGiaToc < giaTocHopLeToiThieu_mps2 || doLonGiaToc > giaTocHopLeToiDa_mps2) {
         reset();
         return false;
     }
+    // Accel đo lực riêng f = a_tinhTien + g*huongLen. Trừ a_tinhTien đã biết theo phương
+    // ngang tiến biểu diễn trong hệ xe: h = normalize(eX - (eX·u)u), u = phương đứng ước lượng.
+    Vec3Imu giaToc = giaTocDo;
+    trangThaiXe.giaTocDaBu_mps2 = 0;
+    if (_daKhoiTao && std::isfinite(giaTocTinhTien_mps2) && giaTocTinhTien_mps2 != 0.0f) {
+        const float giaTocBu = std::clamp(giaTocTinhTien_mps2, -giaTocBuImuToiDa_mps2, giaTocBuImuToiDa_mps2);
+        Vec3Imu phuongNgangTien{1.0f-_huongLen.x*_huongLen.x, -_huongLen.x*_huongLen.y, -_huongLen.x*_huongLen.z};
+        if (chuanHoaVecto(phuongNgangTien)) {
+            giaToc = {giaTocDo.x-giaTocBu*phuongNgangTien.x, giaTocDo.y-giaTocBu*phuongNgangTien.y,
+                      giaTocDo.z-giaTocBu*phuongNgangTien.z};
+            trangThaiXe.giaTocDaBu_mps2 = giaTocBu;
+        }
+    }
+    const float doLonGiaTocBu = doLonVecto(giaToc);
+    if (!std::isfinite(doLonGiaTocBu)) return false;
     Vec3Imu huongLenTuGiaToc = giaToc;
     if (!chuanHoaVecto(huongLenTuGiaToc)) return false;
-    const bool tinCayGiaToc = std::fabs(doLonGiaToc-9.80665f) <= saiLechGiaTocChoPhep_mps2;
+    const bool tinCayGiaToc = std::fabs(doLonGiaTocBu-9.80665f) <= saiLechGiaTocChoPhep_mps2;
     trangThaiXe.doLonGiaToc_mps2 = doLonGiaToc;
-    // Giữ roll từ accel làm đường bảo vệ thô, không dùng góc sensor chưa bù gá.
-    trangThaiXe.gocNghiengNgang_rad = std::atan2(giaToc.y,giaToc.z);
+    // Giữ hướng ước lượng roll từ vectơ đứng đã lọc để tránh xung rung cơ khí gây ngắt giả.
     trangThaiXe.gocTuGiaToc_rad = std::atan2(-giaToc.x,std::hypot(giaToc.y,giaToc.z));
     trangThaiXe.doTinCayGiaToc = std::clamp(
-        1.0f-std::fabs(doLonGiaToc-9.80665f)/saiLechGiaTocChoPhep_mps2,0.0f,1.0f);
+        1.0f-std::fabs(doLonGiaTocBu-9.80665f)/saiLechGiaTocChoPhep_mps2,0.0f,1.0f);
 
     if (!_daKhoiTao) {
         if (!tinCayGiaToc) return false;
@@ -76,6 +93,7 @@ bool ComplementaryEstimator::update(const KhungDuLieuImu& khungDuLieu, TrangThai
     // Pitch Euler suy biến gần +/-90 độ; xe đã ở ngoài vùng cân bằng.
     if (chieuDaiYZ < 1e-4f) { reset(); return false; }
     trangThaiXe.gocNghien_rad = std::atan2(-_huongLen.x,chieuDaiYZ);
+    trangThaiXe.gocNghiengNgang_rad = std::atan2(_huongLen.y,_huongLen.z);
     trangThaiXe.tocDoNghien_radps = (_huongLen.z*gyro.y-_huongLen.y*gyro.z)/chieuDaiYZ;
     trangThaiXe.tocDoNghiengNgang_radps = gyro.x-
         _huongLen.x*(_huongLen.y*gyro.y+_huongLen.z*gyro.z)/(chieuDaiYZ*chieuDaiYZ);

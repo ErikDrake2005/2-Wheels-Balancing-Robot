@@ -2,7 +2,7 @@
 
 > Cập nhật lọc và di chuyển 03/11/2026: [ICM20602](BAO_CAO_ICM20602_LOC_NHIEU.md), [MKS42C/17HS4401S](BAO_CAO_MKS42C_17HS4401S.md). Runtime không DMP; PT1 chỉ nhánh D; có lệnh di chuyển có hạn; R01 đã sửa.
 
-Cập nhật rà soát ngày 05/11/2026. Các điểm chưa hoàn tất được theo dõi trong
+Cập nhật rà soát ngày 08/11/2026. Các điểm chưa hoàn tất được theo dõi trong
 [báo cáo](KET_QUA_RA_SOAT_2026-11-03.md) và [checklist](CHECKLIST_TINH_NANG.md).
 
 Tài liệu này dùng cùng [logic tổng thể](LOGIC_CHUONG_TRINH.md) và
@@ -39,7 +39,7 @@ rõ ràng (`us * 1e-6f`); không truyền độ vào hàm đang dùng radian.
 | Chân I²C/INT/SA0/CS/STEP/DIR/EN/nút/RGB | `include/config/PinConfig.h` | Không trùng chân; phù hợp board/flash/USB; mức logic thực tế. Sơ đồ: SDA10/SCL11, SA0=8/CS=9, motor 1 phải12/13, motor 2 trái5/6 |
 | Địa chỉ I²C hoặc tần số bus | `ImuConfig.h` và `Icm20602Driver::begin()` | ID, đọc đủ 14 byte, timeout, pull-up/chất lượng bus |
 | Dải gia tốc/gyro | `ImuConfig.h`, driver begin/read/calibration | Hiện driver chỉ nhận ±4 g/±500 dps. Đổi cả thanh ghi, hệ số chuyển đổi và hệ số trong hiệu chuẩn |
-| Hướng lắp cảm biến | `UI_Calib`, `HieuChuanQuayNgang`; nếu tắt UI: `ImuMountConfig.h`, `HeTrucImu` | Góc dọc dương khi nghiêng trước, gyro cùng dấu; giữ pitch ban đầu khác0 và nhận đúng nghiêng ngang |
+| Hướng lắp cảm biến | `UI_Calib`, `HieuChuanNghiengDoc`; nếu tắt UI: `ImuMountConfig.h`, `HeTrucImu` | Góc dọc dương khi nghiêng trước, gyro cùng dấu; giữ pitch ban đầu khác0 và nhận đúng nghiêng ngang |
 | Nút, LED, thời gian hoặc ngưỡng calib | `CalibConfig.h`, `UI_Calib.cpp` | Nhấn–nhả, chống dội35ms, giữ nút qua bước, dữ liệu rung/timeout, lỗi và thử lại; RGB48/GRB cần xác minh board |
 | Góc cân bằng cơ học | `ControlConfig.h::gocCanBang_rad` | Xác định riêng trên xe; không lấy tư thế người đỡ lúc calib làm giá trị này |
 | Độ lọc góc | `hangSoThoiGianLocGoc_s`, cấu hình DLPF | Nhiễu, trễ, phản ứng khi bánh tăng tốc, độ trôi |
@@ -90,8 +90,10 @@ thêm biến nhưng quên gán sẽ khiến giá trị mặc định có thể c
 - Không thêm Serial, cấp phát heap hoặc chờ I/O vào ISR giám sát.
 - UI chạy trong setup trước các task cân bằng. Nếu chuyển sang hiệu chuẩn khi đang
   chạy, phải thiết kế lại quyền sở hữu I²C và trạng thái motor; hiện chưa hỗ trợ.
-- Khi sửa dựng ma trận UI, giữ X đo từ trục quay khung. Test phải kiểm pitch ban
-  đầu khác0 vẫn còn đúng; không dùng lại cách ép Z trùng gravity tư thế người giữ.
+- Khi sửa dựng ma trận UI, giữ Y từ trục quay quanh hai bánh, X từ hiệu hai mốc
+  ĐẦU/ĐUÔI đã chiếu vuông góc Y, Z=X×Y. Test phải kiểm pitch ban đầu khác0 khi
+  hai mốc chuẩn; không ép Z trùng gravity tư thế người giữ. Cần có ca bất đối xứng
+  80°/90° để thể hiện sai số mốc không quan sát được chỉ bằng hai mốc fit.
 - `service()` cần chạy đều để phát xung thưa, đổi chiều và gia hạn heartbeat.
 - Mã phiên và số thứ tự dùng kiểu unsigned; so sánh quá hạn/timestamp theo đúng
   ý nghĩa từng biến. Đếm xung bánh có dấu dùng `int64_t`.
@@ -105,13 +107,19 @@ Từ thư mục dự án, PowerShell:
 pio run -e lolin_s3_mini
 ```
 
-Script chạy năm nhóm C++: điều khiển/an toàn/phiên, watchdog, lọc/di chuyển,
-góc gá/estimator vector và calib roll. `calib_roll_tests.cpp` kiểm dấu, chất lượng
-lượt quay và giữ pitch ±6° với roll tham chiếu -4°/0°/+4°. Các test số học không
+Script chạy sáu nhóm C++: điều khiển/an toàn/phiên, watchdog, lọc/di chuyển,
+góc gá/estimator vector, calib pitch ĐẦU/ĐUÔI và boot/I²C/thu lại calib khi rung.
+`calib_pitch_tests.cpp` kiểm ma trận gá xéo, chiều quay trước → sau, hai mốc gần
+±90°, pitch tham chiếu khác0 và các trường hợp không đạt. Đợt 08/11 đã PASS sáu
+nhóm native và build: calib pitch 2.038 kiểm tra, boot/UI 44 kiểm tra; RAM 57.044 byte,
+flash 476.206 byte. Chưa upload/chạy xe thật. Bản ghi 05/11 trước đó thuộc UI roll cũ.
+Các test số học không
 thay cho thử nút/RGB, Wire, timing và chuyển động thật. Sau khi đổi UI, làm lại
-[quy trình calib](HUONG_DAN_UI_CALIB.md) trên board với EN tắt và ghi log CALIB_RETURN.
+[quy trình calib](HUONG_DAN_UI_CALIB.md) trên board với EN tắt, ghi log trục/ma trận,
+hai mốc, tổng góc gyro và CALIB_RETURN. Dùng mặt đỡ cơ khí chuẩn; kiểm góc độc lập
+khác hai mốc fit, chúi ĐẦU dương/ngả ĐUÔI âm và độ lặp khi trở lại cùng tư thế.
 
-Có thể dùng `-TrinhBienDich g++` nếu compiler ở PATH. Script tạo năm executable
+Có thể dùng `-TrinhBienDich g++` nếu compiler ở PATH. Script tạo sáu executable
 trong `.cache/`. Python tool có test riêng trong `test/python/`. Compiler lỗi hoặc assertion
 thất bại làm script dừng. Nếu shell chưa nhận `pio`, gọi đường dẫn đầy đủ tới
 PlatformIO trong môi trường Python đã cài.
@@ -122,6 +130,7 @@ PlatformIO trong môi trường Python đã cài.
 | Native odometry/controller | Đơn vị, dấu, giới hạn, luật mờ, reset, mô hình lý tưởng | Không chứng minh motor bám lệnh hay xe thật cân bằng |
 | Native phiên/mẫu | Tắt-bật nhanh, lệnh khác phiên, zero-ack, trùng/quay vòng số mẫu | Chưa chạy lịch FreeRTOS thật |
 | Native watchdog | Mã giám sát thật tắt EN giả khi không còn feed, giữ lỗi, đúng cực tính | Stub không mô phỏng độ trễ/khóa đa core hoặc register GPIO thật |
+| Native boot/UI/ICM | Chính driver/UI với Wire giả: reset, ID, cấu hình, data-ready, NACK/thiếu byte, rung rồi yên và timeout | Chưa đo bus/nút/LED vật lý; xem `imu_boot_calib_tests.cpp` |
 | Build firmware | Header/API/kiểu dữ liệu/link tài nguyên phù hợp bộ SDK cài đặt | Không đo timing/điện áp trên board |
 
 Không coi số lượng assertion là số kịch bản độc lập: nhiều assertion đến từ vòng

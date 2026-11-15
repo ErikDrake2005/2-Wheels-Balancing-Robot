@@ -27,7 +27,8 @@ struct MksSnapshot {
     uint64_t thoiDiemHetHan_us = 0;
 };
 
-// Chủ của STEP/DIR. EN được cấp qua GiamSatDongCo; ISR giám sát chỉ có quyền tắt EN.
+// Chủ của STEP/DIR cho cặp driver MKS Servo42C / Servo42D ở chế độ CR_vFOC.
+// EN được cấp qua GiamSatDongCo; ISR giám sát chỉ có quyền tắt EN.
 // Gọi API từ cùng một MotorTask; không gọi từ ISR.
 // ISR/điều khiển/safety khác gửi lệnh hoặc notification tới task sở hữu.
 class MksServo42CPair {
@@ -87,4 +88,7 @@ private:
     uint64_t _lanPhucVuCuoi_us = 0;
     uint64_t _thoiDiemRaLenhCuoi_us = 0;
 };
+
+// MKS Servo42D và Servo42C dùng chung giao tiếp xung STEP/DIR/EN ở chế độ CR_vFOC (mục H2).
+using MksServo42DPair = MksServo42CPair;
 #endif

@@ -238,11 +238,47 @@ void cascadePlantTest(bool dungPidMo) {
     }
     check(std::fabs(gocNghien_rad)<0.01 && std::fabs(vanToc_mps)<0.05, "cascade limits drift after initial lean");
 }
+// H3/H1/M4: con lắc hiệu dụng L_eff có trễ truyền 10 ms (2 chu kỳ mẫu), chịu mất mẫu lẻ và bù R*thetaDot.
+void delayedEffectivePendulumTest(bool dungPidMo) {
+    AnglePidController boPidGoc;
+    double gocNghien_rad = 0.03, tocDoNghien_radps = 0;
+    double hangDoiGiaToc_mps2[2] = {0.0, 0.0}; // Trễ 2 chu kỳ = 10 ms.
+    constexpr double buocThoiGian_s = 0.005, buocMoPhong_s = buocThoiGian_s / 10;
+    for (int chiSoMau = 0; chiSoMau < 600; ++chiSoMau) {
+        const double giaTocLenh_mps2 = boPidGoc.update(
+            static_cast<float>(gocNghien_rad), static_cast<float>(tocDoNghien_radps), 0, buocThoiGian_s, dungPidMo);
+        const double giaTocThuc_mps2 = hangDoiGiaToc_mps2[0];
+        hangDoiGiaToc_mps2[0] = hangDoiGiaToc_mps2[1];
+        hangDoiGiaToc_mps2[1] = giaTocLenh_mps2;
+        for (int chiSoBuocNho = 0; chiSoBuocNho < 10; ++chiSoBuocNho) {
+            tocDoNghien_radps += (9.80665 * std::sin(gocNghien_rad) - giaTocThuc_mps2 * std::cos(gocNghien_rad))
+                / chieuDaiConLacHieuDung_m * buocMoPhong_s;
+            gocNghien_rad += tocDoNghien_radps * buocMoPhong_s;
+        }
+        check(std::isfinite(gocNghien_rad) && std::fabs(gocNghien_rad) < 0.08,
+              "delayed L_eff pendulum remains bounded");
+    }
+    check(std::fabs(gocNghien_rad) < 0.001 && std::fabs(tocDoNghien_radps) < 0.01,
+          "delayed L_eff pendulum recovers from initial lean");
+
+    // H1 + M4: mất 1–2 mẫu IMU (khoảng cách 10–15 ms) vẫn giữ vận tốc hợp lệ; bù R*thetaDot đúng dấu.
+    DifferentialDrive boQuyDoi;
+    TrangThaiXe trangThai{};
+    trangThai.gocHopLe = true;
+    trangThai.gocNghien_rad = 0.05f;
+    trangThai.tocDoNghien_radps = 1.0f;
+    check(!boQuyDoi.update({0, 0, 1000, true}, trangThai), "baseline pulse frame");
+    check(near(trangThai.viTriDoc_m, banKinhBanh_m * 0.05f, 1e-6), "M4 body angle added to ground position");
+    check(boQuyDoi.update({0, 0, 13000, true}, trangThai) && trangThai.vanTocHopLe,
+          "H1 12 ms gap (dropped 1 IMU sample + jitter) keeps velocity valid");
+    check(trangThai.vanTocDoc_mps > 0.0f, "M4 body pitch rate contributes positive ground speed when stator rotates with body");
+}
 }
 int main() {
     odometryTests(); estimatorTests(); safetyTests(); controllerTests();
     kiemTraTuTheVaDuLieuLoi(); kiemTraPhienVaThuTuMau();
     plantTest(false); plantTest(true); cascadePlantTest(false); cascadePlantTest(true);
-    std::cout << "PASS: odometry, IMU fusion, safety, fuzzy PID, cascade, ideal plant (fixed/fuzzy); "
+    delayedEffectivePendulumTest(false); delayedEffectivePendulumTest(true);
+    std::cout << "PASS: odometry, IMU fusion, safety, fuzzy PID, cascade, ideal/delayed plant (fixed/fuzzy); "
               << soPhepKiemTra << " checks\n";
 }

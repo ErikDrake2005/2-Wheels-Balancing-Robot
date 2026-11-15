@@ -1,6 +1,38 @@
 # Checklist tính năng và mức kiểm chứng
 
-## Bổ sung 05/11/2026 — sơ đồ, bù gá lắp và UI calib
+## Bổ sung 09/11/2026 — luồng IMU runtime
+
+- [x] INT latch, ACK bằng burst status + 14 byte, không tái dùng data-ready.
+- [x] Kick/ACK phục hồi không xuất thành mẫu góc mới khi thiếu IRQ nguồn.
+- [x] Chốt tuổi IRQ dưới một chu kỳ mẫu và loại ngắt chồng; queue chẩn đoán riêng.
+- [x] Tag firmware, counter/tuổi mẫu và LED phản ánh tình trạng dữ liệu hiện tại.
+- [x] Sáu nhóm native và build PASS; nhóm boot/UI/runtime 265 kiểm tra.
+- [ ] Upload và đo xác nhận đường INT/I²C, lịch task, LED trên board.
+
+Log người dùng đã đính chính là bản cũ. Xem
+[báo cáo chẩn đoán](CHAN_DOAN_IMU_RUNTIME_2026-11-09.md); không suy từ log đó rằng
+bản calib ĐẦU/ĐUÔI mới đã gặp cùng lỗi trên xe.
+
+## Bổ sung 08/11/2026 — calib ĐẦU/ĐUÔI gần90°
+
+- [x] Thay thao tác nghiêng trái/phải30–45° bằng hạ ĐẦU nằm → qua đứng → hạ ĐUÔI nằm.
+- [x] Dùng gyro XYZ tìm Y quanh trục bánh; dùng hiệu hai mốc gia tốc tìm X, Z=X×Y.
+- [x] Không lấy tư thế dựng của người giữ làm pitch0; góc cân bằng cơ học vẫn riêng.
+- [x] Chẩn đoán hai mốc/góc gyro/ma trận và góc trở về theo độ/rad.
+- [x] Kiểm chứng 08/11: calib pitch PASS 2.038 kiểm tra, boot/UI PASS 44 kiểm tra; sáu nhóm native và build PASS.
+- [ ] Kiểm chứng trên xe: hai mặt đỡ chuẩn, đúng dấu ĐẦU dương/ĐUÔI âm và độ lặp.
+- [ ] Đối chiếu sai số góc bằng góc độc lập, không chỉ đọc lại hai mốc đã fit.
+
+Khoảng 80–90° là mục tiêu thao tác; giới hạn sai mốc ±5° chỉ áp dụng khi cả hai
+góc thật đều thuộc khoảng đó. Cửa sổ 80–92° là góc sau fit, không bảo đảm góc thật.
+Cần chuẩn cơ khí; cửa sổ phần mềm không tự bảo đảm mốc đúng. Xem
+[báo cáo mới](CALIB_DAU_DUOI_VA_KIEM_CHUNG_GOC_2026-11-08.md).
+
+Build 08/11: RAM 57.044 byte, flash 476.206 byte. Chưa upload/chạy trên xe thật.
+Các hệ số trục in qua Serial phục vụ chẩn đoán, không tự xác nhận nhãn hướng
+ĐẦU hoặc chiều DIR/motor đúng.
+
+## Hồ sơ 05/11/2026 — sơ đồ, bù gá lắp và UI cũ
 
 - [x] Phép quay sensor→xe cho cả accel và gyro, cấu hình Euler hoặc ma trận.
 - [x] Kiểm tra ma trận, loại NaN/Inf, shear và determinant âm trước khi cho chạy.
@@ -10,9 +42,9 @@
 - [x] Đối chiếu GPIO theo sơ đồ: SDA10/SCL11, CS9/SA08, EN2, nút3, INT7.
 - [x] Ánh xạ theo người dùng: motor 1 phải DIR12/STEP13, motor 2 trái DIR5/STEP6.
 - [x] Driver đặt CS HIGH và SA0 theo địa chỉ I²C trước khi mở bus; static_assert phát hiện trùng GPIO.
-- [x] UI nút/RGB trong setup: bias tĩnh → mốc trái → lật trái–phải → mốc phải → kiểm tư thế; lỗi cho thử lại với EN tắt.
-- [x] Giữ X từ chuyển động khung khi dựng ma trận; không ép pitch người giữ thành0.
-- [x] Native calib roll đạt, gồm pitch ban đầu ±6° và roll tham chiếu -4°/0°/+4°.
+- [x] UI nút/RGB trong setup, EN tắt; luồng hiện tại dùng bias tĩnh → mốc ĐẦU → lượt quay qua đứng → mốc ĐUÔI → kiểm tư thế.
+- [x] Bản cũ giữ X từ lượt roll; bản hiện tại giữ Y từ lượt pitch và X từ hai mốc nằm, không ép pitch người giữ thành0.
+- [x] Hồ sơ 05/11: test calib roll cũ từng đạt; kết quả này không thay kiểm thử luồng pitch mới.
 - [x] LED trắng so tư thế với `gocCanBang_rad`; xanh lá chỉ báo READY, Serial `a` mới yêu cầu bật.
 - [ ] Xác minh RGB GPIO48/thứ tự GRB và nút kéo xuống GND trên board thật.
 - [ ] Thực hiện UI calib trên xe, kiểm góc/dấu sau bù; nếu tắt UI, nhập ma trận đo vào cấu hình identity.
@@ -25,7 +57,7 @@ phản ánh mã/test phần mềm nếu chưa có bằng chứng đo xe.
 
 > Cập nhật lọc và di chuyển 03/11/2026: [ICM20602](BAO_CAO_ICM20602_LOC_NHIEU.md), [MKS42C/17HS4401S](BAO_CAO_MKS42C_17HS4401S.md). Runtime không DMP; PT1 chỉ nhánh D; có lệnh di chuyển có hạn; R01 đã sửa.
 
-Ngày đồng bộ: **05/11/2026 — Asia/Saigon**. Áp dụng cho working tree hiện tại,
+Ngày đồng bộ tài liệu: **08/11/2026 — Asia/Saigon**. Áp dụng cho working tree hiện tại,
 ESP32-S3 + ICM20602 + hai MKS Servo42C nhận STEP/DIR.
 
 **Dấu `[x]` ở phần A nghĩa là đã có trong mã, không có nghĩa đã chạy đạt trên xe.**
@@ -45,7 +77,9 @@ Kết quả chi tiết và việc còn mở: [báo cáo rà soát](KET_QUA_RA_SO
 | [x] | Khởi tạo ICM20602, kiểm tra ID `0x12` | `Icm20602Driver::begin()` | Đọc mã + build; chưa test Wire/ICM thật |
 | [x] | Reset/wake, cấu hình DLPF, range và đọc lại thanh ghi | Driver IMU | Đọc mã + build; dải đang cố định ±4 g/±500 dps |
 | [x] | Đọc burst 14 byte, đổi m/s², rad/s, nhiệt độ | `Icm20602Driver::read()` | Đọc mã + build; chưa có native test driver I²C |
-| [x] | Thu bias gyro 500 mẫu, kiểm tra phương sai và timeout | `hieuChinhConQuay()` | Đọc mã + build; người dùng phải giữ xe yên |
+| [x] | Thu bias gyro 500 mẫu, tự thu lại khi rung, kiểm cả accel; timeout 30 s | `hieuChinhConQuay()` | Native + build; người dùng vẫn phải giữ xe yên |
+| [x] | Mốc tĩnh tự thu lại, lỗi I²C/mất mẫu báo riêng | `UI_Calib`, `ThongKeMauImu` | Test UI thực với bus/nút/LED giả |
+| [x] | Sau reset kiểm ID/cấu hình và 32 mẫu mới | `kiemTraSauKhoiDong()` | Native NACK/thiếu byte/mất data-ready/sai ID và build; chưa đo board |
 | [x] | Data-ready ISR ghi timestamp và báo task | `RobotApp::imuInterrupt()` | Đọc mã + build; cần đo nhịp ngắt thật |
 | [x] | Loại thông báo trùng/lùi, xử lý số thứ tự quay vòng | `BoLocThuTuMau` | PC |
 | [x] | Đếm mẫu nhảy số thứ tự | `BoLocThuTuMau` | PC |
@@ -74,7 +108,7 @@ Kết quả chi tiết và việc còn mở: [báo cáo rà soát](KET_QUA_RA_SO
 | [x] | Serial `a/d/x/k/f/h`, ưu tiên dừng trước bật | `RobotApp::loop/motorLoop()` | Đọc mã + build; thử từng ký tự trên board còn thiếu |
 | [x] | Telemetry góc, vận tốc, xung, hệ số, lỗi, phase/epoch | `RobotApp::loop()` | Đọc mã + build; chưa ghi log phiên chạy thực |
 | [x] | Cờ xác nhận phần cứng chặn enable mặc định | `MotorConfig.h` + driver | Đọc mã + build; hiện là `false` |
-| [x] | Native test và script chạy năm nhóm test | `test/run_native.ps1` | Đã chạy PASS ngày 05/11/2026; gồm calib roll |
+| [x] | Native test và script chạy sáu nhóm test | `test/run_native.ps1` | 08/11 PASS sáu nhóm; calib pitch 2.038 và boot/UI 44 kiểm tra, chưa thử xe thật |
 | [x] | Tài liệu sử dụng, lập trình, logic, danh mục hàm và sửa đổi | `docs/` | Đối chiếu source, đường dẫn và công thức |
 
 ## A2. Đã bổ sung sau rà soát
@@ -156,8 +190,9 @@ giá trị đo — đạt/chưa đạt — đường dẫn log/ảnh analyzer`.
 
 Sau khi sửa code hoặc đổi toolchain, cập nhật ngày, kết quả và các ô có liên quan.
 
-Bản05/11 sau cập nhật sơ đồ/UI: năm nhóm C++ đạt (14507 + 19 + 169 + 3114
-assertion ở bốn nhóm cũ, thêm nhóm calib roll); build SUCCESS, RAM57044 byte,
-Flash469974 byte. Năm test Python đã đạt ở đợt góc gá trước đó. Kiểm thử lần này
+Hồ sơ bản05/11 sau sửa calib khi rung/kiểm tra boot: sáu nhóm C++ từng đạt (14507 + 19 + 169 + 3114
+assertion ở bốn nhóm cũ, calib roll và nhóm boot/UI 43 điều kiện); build SUCCESS,
+RAM57044 byte, Flash474070 byte. Đây là kích thước bản trước khi đổi calib ĐẦU/ĐUÔI.
+Năm test Python đã đạt ở đợt góc gá trước đó. Hồ sơ kiểm thử này
 chưa có upload, nút/RGB/IMU thật hoặc thử cân bằng, nên các ô nghiệm thu phần cứng
 vẫn chưa được đánh dấu.

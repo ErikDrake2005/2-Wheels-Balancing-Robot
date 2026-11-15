@@ -86,9 +86,11 @@ bool McpwmStepOutput::begin(int stepPin, uint32_t pulseHighUs, uint32_t minLowUs
     const uint64_t high = usToTicks(pulseHighUs, _dophangiaiHz);
     const uint64_t low = usToTicks(minLowUs, _dophangiaiHz);
     const uint64_t period = usToTicks(chuKyKhoiTaoMcpwm_us, _dophangiaiHz);
-    if (high == 0 || low == 0 || high + low > period ||
+    // Dung count_value = 1 khi sync de tranh trung su kien EMPTY (count = 0),
+    // nen nguong CMP phai dat o (high + 1) de dam bao be rong xung HIGH du pulseHighUs.
+    if (high == 0 || low == 0 || high + 1u + low > period ||
         period >= MCPWM_LL_MAX_COUNT_VALUE) return false;
-    _soTickMucCao = static_cast<uint32_t>(high);
+    _soTickMucCao = static_cast<uint32_t>(high) + 1u;
     _soTickMucThap = static_cast<uint32_t>(low);
     _soTickChuKy = static_cast<uint32_t>(period);
 
@@ -138,7 +140,7 @@ bool McpwmStepOutput::begin(int stepPin, uint32_t pulseHighUs, uint32_t minLowUs
     if (mcpwm_new_soft_sync_src(&sc, &_sync) != ESP_OK) return cleanupInit();
     mcpwm_timer_sync_phase_config_t phase{};
     phase.sync_src = _sync;
-    phase.count_value = 0;
+    phase.count_value = 1;
     phase.direction = MCPWM_TIMER_DIRECTION_UP;
     if (mcpwm_timer_set_phase_on_sync(_timer, &phase) != ESP_OK) return cleanupInit();
     if (mcpwm_generator_set_action_on_sync_event(
