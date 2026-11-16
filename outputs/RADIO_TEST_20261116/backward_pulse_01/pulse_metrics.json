@@ -1,0 +1,24 @@
+{
+  "sign": -1,
+  "motion_rows": 17,
+  "vref_span_s": 0.359735,
+  "directional_peak_pcnt_v_mps": 0.0141501,
+  "directional_peak_encoder_v_100ms_mps": 0.0164883312088512,
+  "motion_window_rmse_deg": 0.4212837435997273,
+  "motion_window_max_error_deg": 1.548051748352166,
+  "pitch_range_deg": [
+    -1.1643361833751025,
+    0.6588286987604651
+  ],
+  "vref_peak_mps": 0.05,
+  "motor_off_confirmed": true,
+  "counter_delta": {
+    "bridge_missed_radio": 0,
+    "robot_tx_fail": 0,
+    "robot_tx_drop": 0,
+    "imu_miss": 0,
+    "imu_i2c": 0,
+    "imu_late": 0,
+    "usb_dropped": 0
+  }
+}

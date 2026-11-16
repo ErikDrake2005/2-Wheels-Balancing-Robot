@@ -1,0 +1,9 @@
+{
+  "condition": "floor-unheld during measurement",
+  "release_confirmed_before_motion": true,
+  "settle_seconds_after_release": 3,
+  "motor_off_confirmed": true,
+  "pulse_v_mps": 0.05,
+  "pulse_seconds": 1,
+  "antennas_clear": true
+}

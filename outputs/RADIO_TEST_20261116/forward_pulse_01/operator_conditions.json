@@ -1,0 +1,7 @@
+{
+  "arm_sent": false,
+  "motion_command_sent": false,
+  "result": "No motion trial: USB leading bytes hid first schema header despite radio data arriving",
+  "exclude_from_motion_analysis": true,
+  "fixed_by": "Header resynchronization with required unique columns; repeat monitor request until schema is present; verified against captured first line and new motor-off monitor"
+}

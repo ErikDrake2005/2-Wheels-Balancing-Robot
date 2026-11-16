@@ -1,0 +1,65 @@
+[
+  {
+    "time_from_vref_start_s": 0.0,
+    "vref_mps": 0.00893725,
+    "v_pcnt_mps": -0.00805765,
+    "step_distance_m": -0.0005694136684631501,
+    "encoder_distance_m": -0.0004516039439535328,
+    "pitch_deg": -0.09548926072806203,
+    "target_deg": 0.4301929845856038
+  },
+  {
+    "time_from_vref_start_s": 0.099926,
+    "vref_mps": 0.05,
+    "v_pcnt_mps": 0.00443487,
+    "step_distance_m": -0.0005694136684631501,
+    "encoder_distance_m": -0.0011388273369263003,
+    "pitch_deg": 0.6104865307118921,
+    "target_deg": 0.9851665512597426
+  },
+  {
+    "time_from_vref_start_s": 0.209844,
+    "vref_mps": 0.05,
+    "v_pcnt_mps": 0.018866,
+    "step_distance_m": 0.0013744467859455347,
+    "encoder_distance_m": -0.0005497787143782139,
+    "pitch_deg": 0.9935598100006142,
+    "target_deg": 0.6975216845812399
+  },
+  {
+    "time_from_vref_start_s": 0.294783,
+    "vref_mps": 0.05,
+    "v_pcnt_mps": -0.00982771,
+    "step_distance_m": 0.0009032078879070656,
+    "encoder_distance_m": 0.000942477796076938,
+    "pitch_deg": 0.39621028479859954,
+    "target_deg": 1.1994086488884457
+  },
+  {
+    "time_from_vref_start_s": 0.494633,
+    "vref_mps": 0.0,
+    "v_pcnt_mps": -0.00273219,
+    "step_distance_m": 0.001590431280879833,
+    "encoder_distance_m": 0.0009228428419920018,
+    "pitch_deg": -0.018395193894397817,
+    "target_deg": 0.05181090610649651
+  },
+  {
+    "time_from_vref_start_s": 1.004255,
+    "vref_mps": 0.0,
+    "v_pcnt_mps": -0.00733653,
+    "step_distance_m": 0.0002159844949342983,
+    "encoder_distance_m": 4.908738521234053e-05,
+    "pitch_deg": -0.4375324593496706,
+    "target_deg": 0.16859569600622037
+  },
+  {
+    "time_from_vref_start_s": 2.003513,
+    "vref_mps": 0.0,
+    "v_pcnt_mps": 0.0134412,
+    "step_distance_m": 0.0003926990816987242,
+    "encoder_distance_m": -0.0006675884388878311,
+    "pitch_deg": 0.5272297470225347,
+    "target_deg": -0.011171794650046552
+  }
+]

@@ -1,0 +1,9 @@
+{
+  "condition": "floor-held",
+  "motor": "off throughout monitor",
+  "user_statement_equilibrium_change": "User says no deliberate equilibrium adjustment",
+  "equilibrium_observed_rad": -0.01760259,
+  "validated_previous_equilibrium_rad": 0.001772985,
+  "wireless_link": "paired unicast, bridge COM5, channel1",
+  "not_a_balance_or_motion_trial": true
+}

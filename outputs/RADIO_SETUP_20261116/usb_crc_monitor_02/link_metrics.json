@@ -1,0 +1,26 @@
+{
+  "source_rate_hz": 47.332959062103214,
+  "rows": 899,
+  "usb_bad_frames": 0,
+  "CRC_column": true,
+  "rx_buffer_requested": true,
+  "max_source_gap_ms": 24.976,
+  "rssi_dbm_range": [
+    -74,
+    -40
+  ],
+  "eq_deg": 0.10158455764000225,
+  "EN": [
+    "0"
+  ],
+  "last_pitch_deg": 6.8072599977477495,
+  "delta": {
+    "bridge_missed_radio": 0,
+    "robot_tx_fail": 0,
+    "robot_tx_drop": 0,
+    "usb_dropped": 0,
+    "imu_miss": 0,
+    "imu_i2c": 0,
+    "imu_late": 0
+  }
+}

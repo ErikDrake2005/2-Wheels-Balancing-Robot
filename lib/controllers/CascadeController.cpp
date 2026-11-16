@@ -46,6 +46,7 @@ void CascadeController::reset() {
     hieuViTriHaiBanhMucTieu = 0.0f;
     daDongBoHuongQuay = false;
     dangDiChuyenDocTruoc = false;
+    coLenhDiChuyenDocTruoc = false;
     _gocDat_rad = _gocCanBang_rad;
     _vanTocMucTieu_mps = _tocDoQuayMucTieu_radps = 0;
     _giaTocBanhDaLenh_mps2 = 0;
@@ -87,8 +88,11 @@ bool CascadeController::update(const TrangThaiXe& trangThaiXe, uint64_t thoiDiem
 
     vanTocYeuCau_mps = std::clamp(vanTocYeuCau_mps, -vanTocDiChuyenToiDa_mps, vanTocDiChuyenToiDa_mps);
     tocDoQuayYeuCau_radps = std::clamp(tocDoQuayYeuCau_radps, -tocDoQuayToiDa_radps, tocDoQuayToiDa_radps);
+    const float giaTocLenhDoc_mps2 = (std::fabs(_vanTocMucTieu_mps) > 1e-5f)
+        ? (2.5f * giaTocLenhDiChuyen_mps2)
+        : giaTocLenhDiChuyen_mps2;
     _vanTocMucTieu_mps += std::clamp(vanTocYeuCau_mps - _vanTocMucTieu_mps,
-        -giaTocLenhDiChuyen_mps2 * buocThoiGian_s, giaTocLenhDiChuyen_mps2 * buocThoiGian_s);
+        -giaTocLenhDoc_mps2 * buocThoiGian_s, giaTocLenhDoc_mps2 * buocThoiGian_s);
     _tocDoQuayMucTieu_radps += std::clamp(tocDoQuayYeuCau_radps - _tocDoQuayMucTieu_radps,
         -giaTocLenhQuay_radps2 * buocThoiGian_s, giaTocLenhQuay_radps2 * buocThoiGian_s);
 
@@ -99,10 +103,18 @@ bool CascadeController::update(const TrangThaiXe& trangThaiXe, uint64_t thoiDiem
             _viTriMucTieu_m = trangThaiXe.viTriDoc_m;
             _daDongBoViTri = true;
         } else if (coLenhDiChuyenDoc) {
-            // Khi nguoi dung dang chu dong day can ga di chuyen tren dia hinh:
-            // bam muc tieu vi tri theo vi tri thuc de tranh tich luy windup vi tri tren doc/vat can.
-            _viTriMucTieu_m = trangThaiXe.viTriDoc_m;
+            // Tích phân vị trí dẫn đường giới hạn ±0,25 m trước thân xe khi tiến/lùi
+            // để cả thành phần vị trí và vận tốc cùng kéo xe tăng tốc nhanh mà không windup trên dốc.
+            constexpr float cuaSoDanDuong_m = 0.25f;
+            _viTriMucTieu_m += _vanTocMucTieu_mps * buocThoiGian_s;
+            _viTriMucTieu_m = std::clamp(
+                _viTriMucTieu_m,
+                trangThaiXe.viTriDoc_m - cuaSoDanDuong_m,
+                trangThaiXe.viTriDoc_m + cuaSoDanDuong_m);
         } else {
+            if (coLenhDiChuyenDocTruoc) {
+                _viTriMucTieu_m = trangThaiXe.viTriDoc_m;
+            }
             // Khi nha can ga ve 0: tich phan muot quang duong giam toc roi khoa cung vi tri dung yen.
             _viTriMucTieu_m += _vanTocMucTieu_mps * buocThoiGian_s;
             _viTriMucTieu_m = std::clamp(
@@ -112,6 +124,7 @@ bool CascadeController::update(const TrangThaiXe& trangThaiXe, uint64_t thoiDiem
         }
     }
     dangDiChuyenDocTruoc = dangDiChuyenDoc;
+    coLenhDiChuyenDocTruoc = coLenhDiChuyenDoc;
 
     _thoiGianVongVanToc_s += buocThoiGian_s;
     if (!_batVongNgoai) {
@@ -122,6 +135,7 @@ bool CascadeController::update(const TrangThaiXe& trangThaiXe, uint64_t thoiDiem
         _thoiGianVongVanToc_s = 0.0f;
     } else if (_thoiGianVongVanToc_s >= chuKyVongVanToc_us * 1e-6f) {
         const float saiLechVanToc_mps = _vanTocMucTieu_mps - trangThaiXe.vanTocDoc_mps;
+        const float heSoBamVanTocDiChuyen = coLenhDiChuyenDoc ? 2.2f : 1.0f;
         if (coViTriChinhXac && _daDongBoViTri) {
             // Khóa vị trí trực tiếp từ tọa độ từ kế/xung 64-bit:
             // - Khi dungPidMo == true  (Chế độ PID Mờ): dùng bộ suy luận Mamdani chỉnh định độ cứng vị trí.
@@ -141,7 +155,7 @@ bool CascadeController::update(const TrangThaiXe& trangThaiXe, uint64_t thoiDiem
                       -gocBuTrongTamToiDa_rad, gocBuTrongTamToiDa_rad)
                 : _gocBuTrongTam_rad;
             const float gocChuaGioiHan_rad =
-                heSoVongNgoai.heSoViPhan * saiLechVanToc_mps +
+                heSoVongNgoai.heSoViPhan * heSoBamVanTocDiChuyen * saiLechVanToc_mps +
                 heSoVongNgoai.heSoTiLe * saiLechViTri_m +
                 buTrongTamDuKien_rad;
             const float gocDaGioiHan_rad = std::clamp(gocChuaGioiHan_rad, -gocDatToiDa_rad, gocDatToiDa_rad);
@@ -155,7 +169,7 @@ bool CascadeController::update(const TrangThaiXe& trangThaiXe, uint64_t thoiDiem
             const float kpV = dungPidMo ? kpVanTocPidMo : _kpVanTocPidThuan;
             const float kiV = dungPidMo ? kiVanTocPidMo : _kiVanTocPidThuan;
             const float tichPhanDuKien_m = _tichPhanVanToc_m + saiLechVanToc_mps * _thoiGianVongVanToc_s;
-            const float gocChuaGioiHan_rad = kpV * saiLechVanToc_mps + kiV * tichPhanDuKien_m;
+            const float gocChuaGioiHan_rad = kpV * heSoBamVanTocDiChuyen * saiLechVanToc_mps + kiV * tichPhanDuKien_m;
             const float gocDaGioiHan_rad = std::clamp(gocChuaGioiHan_rad, -gocDatToiDa_rad, gocDatToiDa_rad);
             if (gocChuaGioiHan_rad == gocDaGioiHan_rad || gocChuaGioiHan_rad * saiLechVanToc_mps < 0.0f) {
                 _tichPhanVanToc_m = tichPhanDuKien_m;

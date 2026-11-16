@@ -2,6 +2,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <esp_now.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/portmacro.h"
 #include "model/GoiLenhNhiPhan.h"
@@ -54,11 +55,12 @@ public:
     using HamNhanPhimLenh = std::function<void(char kyTuLenh)>;
     using HamNhanDongLenh = std::function<void(const char* dongLenh)>;
     using HamLayTrangThai = std::function<void(ThongTinTrangThaiWeb& trangThaiRa)>;
+    using HamNhanChanDoan = std::function<bool(const uint8_t* mac, const uint8_t* data, size_t length)>;
 
     bool khoiTao(HamNhanDiChuyen hamDiChuyenMoi,
                  HamNhanPhimLenh hamPhimMoi,
                  HamNhanDongLenh hamDongMoi,
-                 HamLayTrangThai hamTrangThaiMoi);
+                 HamLayTrangThai hamTrangThaiMoi, HamNhanChanDoan hamChanDoanMoi = {});
     void xuLy();
     void ghiDongNhatKy(const char* noiDung);
     void ghiNhatKyDinhDang(const char* dinhDang, ...);
@@ -72,7 +74,7 @@ public:
 
 private:
     static DieuKhienKhongDay* doiTuongHienTai;
-    static void khiNhanDuLieuEspNow(const void* thongTinNhan, const uint8_t* duLieu, int doDaiDuLieu);
+    static void khiNhanDuLieuEspNow(const esp_now_recv_info_t* thongTinNhan, const uint8_t* duLieu, int doDaiDuLieu);
 
     void xuLyTrangChu();
     void xuLyApiDiChuyen();
@@ -91,6 +93,7 @@ private:
     HamNhanPhimLenh hamPhimLenh;
     HamNhanDongLenh hamDongLenh;
     HamLayTrangThai hamLayTrangThai;
+    HamNhanChanDoan hamNhanChanDoan;
 
     bool daBatWifi = false;
     bool daBatEspNow = false;

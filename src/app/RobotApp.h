@@ -14,8 +14,10 @@
 #include "core/PhienCanBang.h"
 #include "core/BoLocThuTuMau.h"
 #include "config/ControlConfig.h"
+#include "telemetry/NhatKyNghienCuu.h"
 #include "HeTrucImu.h"
 #include "DieuKhienKhongDay.h"
+#include "LienKetChanDoanEspNow.h"
 #include "freertos/queue.h"
 #include "esp_timer.h"
 
@@ -63,6 +65,7 @@ private:
     };
 
     struct MotorStatus {
+        uint64_t thoiDiemSnapshot_us = 0;
         MksSnapshot trangThaiBoDieuKhienDongCo{};
         WheelPulseFrame khungXung{};
         FaultCode loi = FaultCode::None;
@@ -85,6 +88,11 @@ private:
         KhungDuLieuImu khungCamBien{}; // Bản raw hệ sensor phục vụ chẩn đoán gá lắp.
         uint32_t soThuTuLenh = 0;
         uint32_t maPhien = 0;
+        uint32_t phienBanCauHinh = 0;
+        CheDoCanBang phaDieuKhien = CheDoCanBang::Tat;
+        bool dungPidMo = false, bench = false, vongNgoai = false;
+        PidGains heSoGocCoSo{};
+        float kpVanTocCoSo = 0, kiVanTocCoSo = 0, giaTocLenh_mps2 = 0;
         uint64_t soMauBoLo = 0;
         uint32_t soThongBaoTrung = 0, soLanDocChongNgat = 0;
     };
@@ -107,8 +115,11 @@ private:
     void dienTrangThaiWeb(ThongTinTrangThaiWeb& trangThaiRa);
     void inDongSerial(const char* noiDung);
     void inDinhDangSerial(const char* dinhDang, ...);
+    void ghiMauNghienCuu();
+    void guiChanDoanEspNow();
 
     DieuKhienKhongDay dieuKhienKhongDay;
+    LienKetChanDoanEspNow lienKetChanDoan;
 
     Icm20602Driver _camBienGoc;
     CapDriverDongCo _capDongCo;
@@ -125,6 +136,12 @@ private:
     bool _canLuuNvs = false;
     bool _inDuLieuImu = false;
     bool _batTelemetry = true;
+    bool _batNghienCuu = false, _dangPhatNghienCuu = false;
+    bool _canTieuDeNghienCuu = false, _canCauHinhNghienCuu = false;
+    NhatKyNghienCuu _nhatKyNghienCuu;
+    uint64_t _henMauNghienCuu_us = 0;
+    uint32_t _soMauNghienCuuBo = 0, _thuTuDaGhi = 0, _phienBanDaGhi = 0;
+    bool _cheDoMoDaGhi = false;
     bool batTelemetryWeb = false;
     uint32_t mocTelemetryWebTruocMs = 0u;
     char _boDemLenhSerial[96]{};

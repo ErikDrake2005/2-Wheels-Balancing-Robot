@@ -1,0 +1,27 @@
+{
+  "direction": 1,
+  "pulse_vref_span_s": 0.999219,
+  "peak_direction_pcnt_v_mps": 0.0318445,
+  "peak_direction_encoder_relative_v_100ms": 0.037336637658530944,
+  "peak_direction_encoder_ground_v_100ms": 0.02980685056584428,
+  "mean_direction_encoder_ground_v_0p4_to0p9s": -0.0019231536519595924,
+  "command_step_distance_during_vref_m": 0.0015118914645400883,
+  "encoder_distance_during_vref_m": 0.0006086835766330225,
+  "motion_rmse_deg": 0.5715567545711392,
+  "max_error_deg": 1.2509091894868976,
+  "pitch_range_deg": [
+    -0.6583743432289264,
+    1.9189032649129525
+  ],
+  "motor_off_confirmed": true,
+  "usb_bad_frames": null,
+  "counter_delta": {
+    "bridge_missed_radio": 0,
+    "robot_tx_fail": 0,
+    "robot_tx_drop": 0,
+    "usb_dropped": 0,
+    "imu_miss": 0,
+    "imu_i2c": 0,
+    "imu_late": 0
+  }
+}

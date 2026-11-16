@@ -56,7 +56,7 @@ def main():
     ti_so = gia_tri("RobotGeometry.h", "soVongDongCoTrenMotVongBanh")
     so_buoc = gia_tri("MotorConfig.h", "soBuocDayDuMoiVongDongCo")
     vi_buoc = gia_tri("MotorConfig.h", "soViBuocDauVaoMks")
-    tan_so_toi_da = gia_tri("MotorConfig.h", "tanSoStepToiDa_hz")
+    tan_so_toi_da = gia_tri("MotorConfig.h", "tanSoStepToiDaMks_hz")
     gia_toc = gia_tri("ControlConfig.h", "giaTocCanBangToiDa_mps2")
     so_xung_vong = so_buoc * vi_buoc * ti_so
     quang_duong_xung = 2*math.pi*ban_kinh/so_xung_vong
@@ -89,7 +89,7 @@ def main():
                  "rpm": v/(2*math.pi*ban_kinh)*60} for v in [0.01,0.05,0.1,0.15,0.2,0.3,van_toc_max]]
     bang_vi_buoc = [{"vi_buoc": m,"xung_vong": so_buoc*m*ti_so,
                     "m_xung": 2*math.pi*ban_kinh/(so_buoc*m*ti_so),
-                    "vmax_10k_mps": tan_so_toi_da*2*math.pi*ban_kinh/(so_buoc*m*ti_so)} for m in [16,32,64]]
+                    "vmax_10k_mps": 10000*2*math.pi*ban_kinh/(so_buoc*m*ti_so)} for m in [16,32,64]]
     ghi_csv("dap_ung_loc.csv", phan_ung)
     ghi_csv("thong_so_banh.csv", bang_banh)
     ghi_csv("so_sanh_vi_buoc.csv", bang_vi_buoc)

@@ -40,21 +40,36 @@ TrangThaiXe validState(uint64_t thoiDiemMau_us) {
     return trangThaiXe;
 }
 void odometryTests() {
-    check(near(DifferentialDrive::metersPerStep()*6400, 2*3.141592653589793*0.04),
-          "6400 pulses equal one wheel circumference");
+    const int64_t soBuocMoiVong = dungPhanCungTmcMt ? 6400 : 12800;
+    const auto nguonFeedback = dungPhanCungTmcMt
+        ? NguonUocLuongQuangDuong::EncoderBanh : NguonUocLuongQuangDuong::XungBuoc;
+    const double metMoiXungFeedback = DifferentialDrive::metersPerFeedbackPulse(nguonFeedback);
+    const double chuViBanh_m = 2*3.141592653589793*0.04;
+    check(near(DifferentialDrive::metersPerStep()*soBuocMoiVong, chuViBanh_m),
+          "MKS 12800 or TMC 6400 STEP pulses equal one wheel circumference");
+    const float tanSoThamChieu_hz = dungPhanCungTmcMt ? 10000.0f : 20000.0f;
+    check(near(DifferentialDrive::metersPerStep()*tanSoThamChieu_hz, 0.3926990817, 1e-7),
+          "MKS 64 at 20 kHz and TMC 32 at 10 kHz map to the same reference speed");
     check(near(DifferentialDrive::stepsPerSecond(0.1f)*DifferentialDrive::metersPerStep(), 0.1),
           "velocity / step frequency units");
+    DifferentialDrive boQuyDoiMotVong;
+    TrangThaiXe xeMotVong{};
+    const int64_t soXungFeedbackMoiVong = dungPhanCungTmcMt ? 4096 : soBuocMoiVong;
+    check(!boQuyDoiMotVong.update({0,0,1000,true}, xeMotVong), "one-revolution odometry baseline");
+    check(boQuyDoiMotVong.update({soXungFeedbackMoiVong,soXungFeedbackMoiVong,6000,true}, xeMotVong) &&
+          near(xeMotVong.viTriDoc_m, chuViBanh_m) && xeMotVong.nguonQuangDuong == nguonFeedback,
+          "selected feedback counts recover one physical wheel revolution");
     DifferentialDrive boQuyDoiBanhXe;
     TrangThaiXe trangThaiXe{};
     check(!boQuyDoiBanhXe.update({0,0,1000,true}, trangThaiXe), "first count has no measured velocity yet");
     for (int chiSoMau = 1; chiSoMau <= 100; ++chiSoMau) {
         check(boQuyDoiBanhXe.update({chiSoMau*10,chiSoMau*10,1000u+chiSoMau*5000u,true}, trangThaiXe), "forward samples accepted");
     }
-    const double vanTocMongDoi_mps = 10*DifferentialDrive::metersPerStep()/0.005;
+    const double vanTocMongDoi_mps = 10*metMoiXungFeedback/0.005;
     check(near(trangThaiXe.vanTocDoc_mps, vanTocMongDoi_mps), "filtered speed converges to actual pulse delta");
-    check(trangThaiXe.nguonQuangDuong == NguonUocLuongQuangDuong::XungBuoc, "source remains pulse estimate");
+    check(trangThaiXe.nguonQuangDuong == nguonFeedback, "source matches selected hardware feedback");
     check(boQuyDoiBanhXe.update({990,990,506000,true}, trangThaiXe), "reverse delta accepted");
-    check(near(trangThaiXe.viTriDoc_m, 990*DifferentialDrive::metersPerStep()), "reversal subtracts distance");
+    check(near(trangThaiXe.viTriDoc_m, 990*metMoiXungFeedback), "reversal subtracts distance");
     check(!boQuyDoiBanhXe.update({990,990,506000,true}, trangThaiXe) && !trangThaiXe.vanTocHopLe, "duplicate pulse sample rejected");
     check(!boQuyDoiBanhXe.update({990,990,550000,true}, trangThaiXe), "long counter gap invalidates speed");
     check(boQuyDoiBanhXe.update({990,990,555000,true}, trangThaiXe) && trangThaiXe.vanTocDoc_mps == 0,
@@ -63,7 +78,7 @@ void odometryTests() {
     check(!boQuyDoiXungThua.update({0,0,1000,true}, trangThaiXe), "sparse baseline");
     check(boQuyDoiXungThua.update({1,1,6000,true}, trangThaiXe) && trangThaiXe.viTriDoc_m > 0, "one sparse pulse is retained");
     check(boQuyDoiXungThua.update({2,0,11000,true}, trangThaiXe), "opposite wheels accepted");
-    check(near(trangThaiXe.viTriDoc_m, DifferentialDrive::metersPerStep()), "turn-in-place has no longitudinal increment");
+    check(near(trangThaiXe.viTriDoc_m, metMoiXungFeedback), "turn-in-place has no longitudinal increment");
 }
 void estimatorTests() {
     ComplementaryEstimator boUocLuongGoc{HeTrucImu{MaTranQuayImu{}}};
@@ -217,13 +232,16 @@ void cascadePlantTest(bool dungPidMo) {
     TrangThaiXe trangThaiXe{};
     WheelStepCommand lenhBanh{};
     double gocNghien_rad=0.01, tocDoNghien_radps=0, vanToc_mps=0, viTri_m=0;
+    const auto nguonFeedback = dungPhanCungTmcMt
+        ? NguonUocLuongQuangDuong::EncoderBanh : NguonUocLuongQuangDuong::XungBuoc;
+    const double metMoiXungFeedback = DifferentialDrive::metersPerFeedbackPulse(nguonFeedback);
     constexpr double buocThoiGian_s=0.005, buocMoPhong_s=buocThoiGian_s/10;
     for (unsigned chiSoMau=0; chiSoMau<1000; ++chiSoMau) {
         const uint64_t thoiDiemMau_us=1000+chiSoMau*5000u;
         trangThaiXe.gocHopLe=true;
         trangThaiXe.gocNghien_rad=static_cast<float>(gocNghien_rad);
         trangThaiXe.tocDoNghien_radps=static_cast<float>(tocDoNghien_radps);
-        const int64_t soXung=static_cast<int64_t>(std::llround(viTri_m/boQuyDoiBanhXe.metersPerStep()));
+        const int64_t soXung=static_cast<int64_t>(std::llround(viTri_m/metMoiXungFeedback));
         if (!boQuyDoiBanhXe.update({soXung,soXung,thoiDiemMau_us,true},trangThaiXe)) continue;
         check(boDieuKhienTang.update(trangThaiXe,thoiDiemMau_us,dungPidMo,lenhBanh), "cascade accepts quantized pulse odometry");
         const double vanTocTiepTheo_mps=lenhBanh.tocDoBuocTrai_buocTrenGiay*boQuyDoiBanhXe.metersPerStep();

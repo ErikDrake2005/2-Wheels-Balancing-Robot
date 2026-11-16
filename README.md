@@ -1,5 +1,36 @@
 # 2-Wheels-Balacing-Robot
 
+**Chuẩn bị chẩn đoán không dây:** firmware `radio-20261116` bổ sung telemetry
+ESP-NOW hai chiều qua ESP32 DevKit/WROOM-32 cắm USB vào máy tính. Ghép MAC một
+lần khi xe tắt motor; lệnh có boot/session/sequence và lease tối đa 150 ms.
+STOP đưa lệnh về 0 và giữ cân bằng; DISARM tắt motor riêng. Chưa đo liên kết
+thực tế 2–5 m và chưa kết luận hết rung khi chạy.
+[Cầu nối và cách nạp](tools/espnow_bridge/README.md) ·
+[Trình tự chẩn đoán tiến/lùi](docs/CHAN_DOAN_DI_CHUYEN_ESP_NOW.md).
+
+**Tối ưu thời gian 16/11/2026:** đã nạp `timing-20261116`, clock MCPWM 5 MHz,
+STEP tối đa 40 kHz, lịch UART cố định 2,5 ms và phục vụ phản hồi MKS 500 µs.
+Đo motor tắt đạt khoảng 200 khung UART/s/bánh (trước 151–154), không có khe bỏ/lỗi TX
+trong đoạn đo 9,5 s. Giữ PID 33/0/3.3 và vòng ngoài 0.15/0.06.
+Đã kiểm tra tự cân bằng trên sàn 30 giây sau nạp: RMSE bám góc đặt 0,324°,
+không mất mẫu/lỗi trong phiên này. Chưa đánh giá chạy/rẽ tốc độ cao.
+[Tính toán và phạm vi kiểm chứng](docs/TOI_UU_THOI_GIAN_ESP32S3_2026-11-16.md).
+
+**Đo PID thực nghiệm 15/11/2026:** đã chọn PID thuần `33/0/3.3`, vòng ngoài
+`0.15/0.06` trong phạm vi khảo sát đứng tại chỗ và lưu NVS trên xe. Phiên CSV
+độc lập 60 giây có 3.001 mẫu, 50 Hz, RMSE bám góc đặt 0,370°; không mất mẫu/lỗi
+trong phiên này. Xe đang dùng MKS64/40 kHz, MPlyer Enable. Xem
+[dữ liệu PID ngõ vào–ngõ ra](outputs/PID_IO_20261115/README.md) và
+[cách thu lại](docs/THU_NGHIEM_CAN_BANG_VA_THU_DU_LIEU.md).
+
+**Cấu hình vi bước 15/11/2026:** nhánh MKS dùng `MStep = 64` và trần STEP
+20 kHz; nhánh TMC2209 giữ 32 vi bước và 10 kHz. Cả hai vẫn có trần quy đổi
+khoảng 0,393 m/s. Phải đặt `MStep = 64` trên **cả hai driver MKS** cho khớp
+firmware; firmware không tự đổi menu driver. Người dùng đã xác nhận cả hai
+driver đặt 64. Đã nạp bản `mstep64-20261115` và đọc lại `MStep=64`,
+`stepMaxHz=20000` qua Serial; khả năng giảm rung khi chạy vẫn cần đo trên mặt đất.
+[Cách đặt driver và kiểm tra](docs/CAU_HINH_MSTEP_64.md).
+
 **Chẩn đoán runtime 09/11/2026:** source hiện mang mã `imuAck-20261109-t5`, dùng ngắt
 ICM giữ mức và đọc một burst `INT_STATUS + 14 byte` để ACK/nhận mẫu. Chốt mẫu
 cần đọc xong trước chu kỳ kế tiếp (5 ms ở 200 Hz); chẩn đoán có queue riêng để

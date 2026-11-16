@@ -117,6 +117,10 @@ void WheelPulseCounter::resetAxis(Axis& trucBanh) {
     trucBanh.xungEncoderGoc = 0;
     trucBanh.xungEncoderTuongDuongBuoc = 0;
     trucBanh.xungPcntLucHoi = 0;
+    trucBanh.soKhungUart = 0;
+    trucBanh.soLanHoiUart = 0;
+    trucBanh.thoiDiemHoiUart_us = 0;
+    trucBanh.thoiDiemNhanUart_us = 0;
     trucBanh.buTuKeMucTieu = 0;
     trucBanh.buTuKeDaLoc = 0.0;
     trucBanh.buTuKe = 0;
@@ -126,7 +130,8 @@ void WheelPulseCounter::reset() {
     if (!_daSanSang) return;
     resetAxis(_banhTrai);
     resetAxis(_banhPhai);
-    _lanHoiUartTruoc_us = 0;
+    _lichHoiUart.reset();
+    _soLoiGhiUart = 0;
     _thoiDiemDocTruoc_us = 0;
     if (_uartSanSang) {
         uart_flush_input(congUartMksTrai);
@@ -176,6 +181,7 @@ void WheelPulseCounter::docKenhUartMks(int congUart, Axis& trucBanh,
                     trucBanh.diaChiHoatDong = diaChiThu;
                 }
                 ++trucBanh.soKhungUart;
+                trucBanh.thoiDiemNhanUart_us = static_cast<uint64_t>(esp_timer_get_time());
                 const int64_t xungCoHuong = chieuTienDuong ? mau.tongXungEncoder : -mau.tongXungEncoder;
                 if (!trucBanh.daCoMauUart) {
                     trucBanh.xungEncoderGoc = xungCoHuong;
@@ -199,30 +205,29 @@ void WheelPulseCounter::docKenhUartMks(int congUart, Axis& trucBanh,
     }
 }
 
-void WheelPulseCounter::serviceUartMks(uint64_t thoiDiem_us) {
+void WheelPulseCounter::serviceUartMks() {
     if (!_uartSanSang) return;
     docKenhUartMks(congUartMksTrai, _banhTrai, diaChiUartMksTrai, diaChiUartMksPhai, chieuTienEncoderMksTraiDuong);
     docKenhUartMks(congUartMksPhai, _banhPhai, diaChiUartMksPhai, diaChiUartMksTrai, chieuTienEncoderMksPhaiDuong);
 
-    // Luân phiên 2.5 ms trái / 2.5 ms phải trên đường TX chung (GPIO1) để không dính khung hỏi.
-    const uint32_t nuaChuKy_us = chuKyDocUartMks_us >= 2000u ? (chuKyDocUartMks_us / 2u) : 2500u;
-    if (_lanHoiUartTruoc_us == 0 || (thoiDiem_us - _lanHoiUartTruoc_us) >= nuaChuKy_us) {
-        _lanHoiUartTruoc_us = thoiDiem_us;
-        uint8_t diaChiHoi = diaChiUartMksTrai;
-        if (!_luotHoiPhai) {
-            _banhTrai.xungPcntLucHoi = _banhTrai.tongSoXung;
-            diaChiHoi = chonDiaChiHoiMks(_banhTrai.daKhoaDiaChi, _banhTrai.diaChiHoatDong,
-                                         _banhTrai.chiSoThuDiaChi, diaChiUartMksTrai, diaChiUartMksPhai);
-        } else {
-            _banhPhai.xungPcntLucHoi = _banhPhai.tongSoXung;
-            diaChiHoi = chonDiaChiHoiMks(_banhPhai.daKhoaDiaChi, _banhPhai.diaChiHoatDong,
-                                         _banhPhai.chiSoThuDiaChi, diaChiUartMksPhai, diaChiUartMksTrai);
-        }
-        _luotHoiPhai = !_luotHoiPhai;
-
-        uint8_t khungHoi[3]{};
-        BoGiaiMaUartMks::taoKhungHoi(diaChiHoi, BoGiaiMaUartMks::maLenhDocEncoderCarry, khungHoi);
-        uart_write_bytes(congUartMksTrai, khungHoi, sizeof(khungHoi));
+    const auto luot = _lichHoiUart.chonLuot(static_cast<uint64_t>(esp_timer_get_time()));
+    if (luot == LichHoiUartMks::Luot::KhongHoi) return;
+    const bool hoiTrai = luot == LichHoiUartMks::Luot::Trai;
+    Axis& banh = hoiTrai ? _banhTrai : _banhPhai;
+    const uint8_t diaChi = chonDiaChiHoiMks(banh.daKhoaDiaChi, banh.diaChiHoatDong, banh.chiSoThuDiaChi,
+        hoiTrai ? diaChiUartMksTrai : diaChiUartMksPhai, hoiTrai ? diaChiUartMksPhai : diaChiUartMksTrai);
+    uint8_t khungHoi[3]{};
+    BoGiaiMaUartMks::taoKhungHoi(diaChi, BoGiaiMaUartMks::maLenhDocEncoderCarry, khungHoi);
+    const int daGhi = uart_write_bytes(congUartMksTrai, khungHoi, sizeof(khungHoi));
+    const uint64_t ghiXong_us = static_cast<uint64_t>(esp_timer_get_time());
+    const bool ghiDuLenh = daGhi == static_cast<int>(sizeof(khungHoi));
+    _lichHoiUart.ghiNhanKetQua(ghiXong_us, ghiDuLenh);
+    if (ghiDuLenh) {
+        ++banh.soLanHoiUart;
+        banh.thoiDiemHoiUart_us = ghiXong_us;
+        banh.xungPcntLucHoi = banh.tongSoXung;
+    } else {
+        ++_soLoiGhiUart;
     }
 }
 
@@ -241,7 +246,7 @@ WheelPulseFrame WheelPulseCounter::read() {
     WheelPulseFrame khungDuLieu{};
     if (!_daSanSang || !readAxis(_banhTrai) || !readAxis(_banhPhai)) return khungDuLieu;
     const uint64_t thoiDiem_us = static_cast<uint64_t>(esp_timer_get_time());
-    serviceUartMks(thoiDiem_us);
+    serviceUartMks();
     double dt_s = 0.0;
     if (_thoiDiemDocTruoc_us != 0 && thoiDiem_us > _thoiDiemDocTruoc_us) {
         dt_s = std::clamp(static_cast<double>(thoiDiem_us - _thoiDiemDocTruoc_us) * 1e-6, 0.0, 0.05);
@@ -260,6 +265,14 @@ WheelPulseFrame WheelPulseCounter::read() {
     khungDuLieu.diaChiUartPhai = _banhPhai.diaChiHoatDong;
     khungDuLieu.coUartTrai = _banhTrai.daCoMauUart;
     khungDuLieu.coUartPhai = _banhPhai.daCoMauUart;
+    khungDuLieu.soLanHoiUartTrai = _banhTrai.soLanHoiUart;
+    khungDuLieu.soLanHoiUartPhai = _banhPhai.soLanHoiUart;
+    khungDuLieu.soLoiGhiUart = _soLoiGhiUart;
+    khungDuLieu.soKheUartBoLo = _lichHoiUart.soKheBoLo();
+    khungDuLieu.thoiDiemHoiUartTrai_us = _banhTrai.thoiDiemHoiUart_us;
+    khungDuLieu.thoiDiemHoiUartPhai_us = _banhPhai.thoiDiemHoiUart_us;
+    khungDuLieu.thoiDiemNhanUartTrai_us = _banhTrai.thoiDiemNhanUart_us;
+    khungDuLieu.thoiDiemNhanUartPhai_us = _banhPhai.thoiDiemNhanUart_us;
     khungDuLieu.hopLe = true;
     return khungDuLieu;
 }

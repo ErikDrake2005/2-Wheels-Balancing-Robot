@@ -1,0 +1,176 @@
+{
+  "summary": {
+    "transactions": 20,
+    "echoed_sessions": 20,
+    "motor_armed": false,
+    "note": "Host-observed HELLO/session echo includes USB and app scheduling, not one-way RF latency",
+    "max_roundtrip_ms": 109.0,
+    "median_roundtrip_ms": 70.5,
+    "rssi_range": [
+      -56,
+      -53
+    ]
+  },
+  "results": [
+    {
+      "trial": 1,
+      "session": "293882026",
+      "host_observed_roundtrip_ms": 32.0,
+      "rssi_dbm": -55,
+      "boot_id": "756890956",
+      "en": "0"
+    },
+    {
+      "trial": 2,
+      "session": "1737384579",
+      "host_observed_roundtrip_ms": 78.0,
+      "rssi_dbm": -53,
+      "boot_id": "756890956",
+      "en": "0"
+    },
+    {
+      "trial": 3,
+      "session": "344374567",
+      "host_observed_roundtrip_ms": 94.0,
+      "rssi_dbm": -55,
+      "boot_id": "756890956",
+      "en": "0"
+    },
+    {
+      "trial": 4,
+      "session": "598927032",
+      "host_observed_roundtrip_ms": 47.0,
+      "rssi_dbm": -56,
+      "boot_id": "756890956",
+      "en": "0"
+    },
+    {
+      "trial": 5,
+      "session": "3421816597",
+      "host_observed_roundtrip_ms": 109.0,
+      "rssi_dbm": -55,
+      "boot_id": "756890956",
+      "en": "0"
+    },
+    {
+      "trial": 6,
+      "session": "896964314",
+      "host_observed_roundtrip_ms": 62.0,
+      "rssi_dbm": -54,
+      "boot_id": "756890956",
+      "en": "0"
+    },
+    {
+      "trial": 7,
+      "session": "628249211",
+      "host_observed_roundtrip_ms": 94.0,
+      "rssi_dbm": -55,
+      "boot_id": "756890956",
+      "en": "0"
+    },
+    {
+      "trial": 8,
+      "session": "471048282",
+      "host_observed_roundtrip_ms": 78.0,
+      "rssi_dbm": -55,
+      "boot_id": "756890956",
+      "en": "0"
+    },
+    {
+      "trial": 9,
+      "session": "3812004411",
+      "host_observed_roundtrip_ms": 63.0,
+      "rssi_dbm": -55,
+      "boot_id": "756890956",
+      "en": "0"
+    },
+    {
+      "trial": 10,
+      "session": "4288169067",
+      "host_observed_roundtrip_ms": 63.0,
+      "rssi_dbm": -55,
+      "boot_id": "756890956",
+      "en": "0"
+    },
+    {
+      "trial": 11,
+      "session": "591327157",
+      "host_observed_roundtrip_ms": 63.0,
+      "rssi_dbm": -55,
+      "boot_id": "756890956",
+      "en": "0"
+    },
+    {
+      "trial": 12,
+      "session": "3776500684",
+      "host_observed_roundtrip_ms": 63.0,
+      "rssi_dbm": -55,
+      "boot_id": "756890956",
+      "en": "0"
+    },
+    {
+      "trial": 13,
+      "session": "3880433237",
+      "host_observed_roundtrip_ms": 78.0,
+      "rssi_dbm": -54,
+      "boot_id": "756890956",
+      "en": "0"
+    },
+    {
+      "trial": 14,
+      "session": "3865106879",
+      "host_observed_roundtrip_ms": 94.0,
+      "rssi_dbm": -56,
+      "boot_id": "756890956",
+      "en": "0"
+    },
+    {
+      "trial": 15,
+      "session": "3584867545",
+      "host_observed_roundtrip_ms": 63.0,
+      "rssi_dbm": -55,
+      "boot_id": "756890956",
+      "en": "0"
+    },
+    {
+      "trial": 16,
+      "session": "436532870",
+      "host_observed_roundtrip_ms": 63.0,
+      "rssi_dbm": -56,
+      "boot_id": "756890956",
+      "en": "0"
+    },
+    {
+      "trial": 17,
+      "session": "100476593",
+      "host_observed_roundtrip_ms": 94.0,
+      "rssi_dbm": -55,
+      "boot_id": "756890956",
+      "en": "0"
+    },
+    {
+      "trial": 18,
+      "session": "2062436904",
+      "host_observed_roundtrip_ms": 62.0,
+      "rssi_dbm": -56,
+      "boot_id": "756890956",
+      "en": "0"
+    },
+    {
+      "trial": 19,
+      "session": "2702797975",
+      "host_observed_roundtrip_ms": 78.0,
+      "rssi_dbm": -54,
+      "boot_id": "756890956",
+      "en": "0"
+    },
+    {
+      "trial": 20,
+      "session": "2180875011",
+      "host_observed_roundtrip_ms": 78.0,
+      "rssi_dbm": -56,
+      "boot_id": "756890956",
+      "en": "0"
+    }
+  ]
+}

@@ -165,11 +165,21 @@ int main() {
         kiemTra(BoGiaiMaUartMks::quyDoiSangXungBuoc(kqMks.tongXungEncoder, 6400, 16384) == 14400,
                 "Quy doi 16384 xung tu ke MKS sang 6400 xung buoc chinh xac");
 
-        // Kiểm tra định dạng wire thực tế MKS V1.1 0x30 (65536/vòng) & cấu hình phần cứng (0xE1, 0xE2, MStep=32, PID_THUAN):
+        // Đổi vi bước đầu vào không đổi định dạng encoder 0x30 (65536 đơn vị/vòng).
         kiemTra(soXungEncoderMksMoiVong == 65536u && diaChiUartMksTrai == 0xE1u &&
-                diaChiUartMksPhai == 0xE2u && soViBuocDauVaoMks == 32u &&
+                diaChiUartMksPhai == 0xE2u && soViBuocDauVaoMks == 64u && soViBuocTmc2209 == 32u &&
                 cheDoDieuKhienKhoiDong == CheDoDieuKhien::PidThuan,
-                "Cau hinh mac dinh MKS 0xE1/0xE2 MStep=32 65536/vong va PID_THUAN");
+                "MKS 64 vi buoc, TMC 32 vi buoc, encoder MKS van 65536/vong va PID_THUAN");
+        const uint32_t soBuocMoiVongMks = soBuocDayDuMoiVongDongCo * soViBuocDauVaoMks;
+        kiemTra(BoGiaiMaUartMks::quyDoiSangXungBuoc(65536, soBuocMoiVongMks) == 12800 &&
+                BoGiaiMaUartMks::quyDoiSangXungBuoc(-16384, soBuocMoiVongMks) == -3200,
+                "Encoder MKS mot vong va am mot phan tu vong doi dung sang STEP 64 vi buoc");
+        const double soBuocMoiVongDangDung = dungPhanCungTmcMt ? 6400.0 : 12800.0;
+        const double tanSoThamChieu_hz = dungPhanCungTmcMt ? 10000.0 : 20000.0;
+        kiemTra(std::fabs(DifferentialDrive::metersPerStep() * soBuocMoiVongDangDung -
+                        2.0 * 3.141592653589793 * banKinhBanh_m) < 1e-7 &&
+                std::fabs(tanSoThamChieu_hz * DifferentialDrive::metersPerStep() - 0.3926990817) < 1e-7,
+                "Moi cau hinh giu dung chu vi banh va moc quy doi van toc 0.392699 m/s");
         uint8_t khungThuc[8] = {0xE1, 0xFF, 0xFF, 0xFF, 0xFF, 0xC6, 0x66, 0x09};
         const auto kqThuc = BoGiaiMaUartMks::giaiMaEncoder0x30(khungThuc, 8, 0xE1);
         kiemTra(kqThuc.hopLe && kqThuc.soVongCarry == -1 && kqThuc.gocTrongVong == 0xC666u &&
@@ -206,10 +216,11 @@ int main() {
             kiemTra(boBench.update(xe, t_us, false, lenh), "Bench Mode update hop le");
             viTriThuc_m += static_cast<double>(lenh.tocDoBuocTrai_buocTrenGiay) * metMoiStep * 0.005;
         }
+        const double vanTocBench_mps = lenh.tocDoBuocTrai_buocTrenGiay * metMoiStep;
         kiemTra(std::fabs(boBench.gocDat_rad() - 0.02f) < 1e-5f &&
-                lenh.tocDoBuocTrai_buocTrenGiay > 1500.0f &&
-                lenh.tocDoBuocTrai_buocTrenGiay < 6000.0f,
-                "Bench Mode giu van toc ti le goc nghieng va khong bao hoa 10000 STEP/s");
+                vanTocBench_mps > 0.0589 && vanTocBench_mps < 0.2357 &&
+                std::fabs(lenh.tocDoBuocTrai_buocTrenGiay) < tanSoStepToiDa_hz,
+                "Bench Mode giu van toc vat ly ti le goc nghieng va khong bao hoa STEP");
 
         // Trả xe về đúng gocCanBang_rad = 0.02f: bánh phải tự hãm dần về 0 STEP/s:
         for (unsigned k = 200; k < 420; ++k) {
@@ -220,8 +231,8 @@ int main() {
             kiemTra(boBench.update(xe, t_us, false, lenh), "Bench Mode return update hop le");
             viTriThuc_m += static_cast<double>(lenh.tocDoBuocTrai_buocTrenGiay) * metMoiStep * 0.005;
         }
-        kiemTra(std::fabs(lenh.tocDoBuocTrai_buocTrenGiay) < 25.0f,
-                "Bench Mode tu ham banh ve 0 STEP/s khi tro ve goc can bang");
+        kiemTra(std::fabs(lenh.tocDoBuocTrai_buocTrenGiay * metMoiStep) < 0.001,
+                "Bench Mode tu ham banh ve duoi 1 mm/s khi tro ve goc can bang");
     }
 
     // Kiểm tra chống trôi vị trí khi lệch trọng tâm cơ khí (CoM Auto-Trim + Mamdani Position Lock):
@@ -233,12 +244,15 @@ int main() {
         const double gocTrongTamThuc_rad = 0.008; // Trọng tâm thực lệch ~0,46 độ so với gocCanBang_rad=0
         double gocNghien_rad = gocTrongTamThuc_rad, tocDoNghien_radps = 0.0, vanToc_mps = 0.0, viTri_m = 0.0;
         constexpr double dt_s = 0.005, dtCon_s = dt_s / 10.0;
+        const auto nguonOdo = dungPhanCungTmcMt
+            ? NguonUocLuongQuangDuong::EncoderBanh : NguonUocLuongQuangDuong::XungBuoc;
+        const double metMoiXungFeedback = DifferentialDrive::metersPerFeedbackPulse(nguonOdo);
         for (unsigned mau = 0; mau < 2400; ++mau) { // 12 giây mô phỏng
             const uint64_t t_us = 1000u + mau * 5000u;
             xe.gocHopLe = true;
             xe.gocNghien_rad = static_cast<float>(gocNghien_rad);
             xe.tocDoNghien_radps = static_cast<float>(tocDoNghien_radps);
-            const int64_t soXung = static_cast<int64_t>(std::llround(viTri_m / boQuyDoi.metersPerStep()));
+            const int64_t soXung = static_cast<int64_t>(std::llround(viTri_m / metMoiXungFeedback));
             if (!boQuyDoi.update({soXung, soXung, t_us, true}, xe)) continue;
             kiemTra(boDieuKhien.update(xe, t_us, true, lenhBanh), "Mamdani CoM Auto-Trim update hop le");
             const double vanTocTiep_mps = lenhBanh.tocDoBuocTrai_buocTrenGiay * boQuyDoi.metersPerStep();
@@ -345,8 +359,13 @@ int main() {
             viTriThucMet += 0.5 * (vanTocThucMetGiay + vanTocMoi) * buocThoiGian;
             vanTocThucMetGiay = vanTocMoi;
         }
-        kiemTra(std::fabs(viTriThucMet) < 0.12 && std::fabs(vanTocThucMetGiay) < 0.005,
-                "Che do PID Thuan giu vi tri dung tai cho on dinh");
+        // Góc cân bằng bị cố ý để sai 0,008 rad: nhánh vị trí P cần một sai lệch
+        // hữu hạn để tạo góc đỡ đúng. Không ép x=0 hoặc giữ ngưỡng chỉ hợp với Kiv cũ.
+        const double viTriCanBangDuKien = -gocLechTrongTam / kiVanTocPidThuan;
+        kiemTra(std::fabs(viTriThucMet - viTriCanBangDuKien) < 0.005 &&
+                std::fabs(vanTocThucMetGiay) < 0.005 &&
+                std::fabs(gocNghienThuc - gocLechTrongTam) < 0.001,
+                "PID Thuan hoi tu dung vi tri can bang khi co lech goc trong tam chua bu");
     }
 
     // 3. Kiem tra bam vi tri khi di chuyen dia hinh va khoa vi tri dung moi khi nha ga:
@@ -530,8 +549,10 @@ int main() {
         }
         kiemTra(daThayThuanCoDinh && daThayMoTangKp && daThayMoTangKd,
                 "PID Thuan giu he so co dinh va PID Mo tu tang Kp/Kd khi nghieng");
-        kiemTra(std::fabs(viTriHienTai) < 0.12 && std::fabs(vanTocHienTai) < 0.005,
-                "Xe dung vung va giu vi tri sau khi luan chuyen PID_THUAN <-> PID_MO");
+        const double viTriCanBangSauChuyenMode = -gocLech / kiVanTocPidThuan;
+        kiemTra(std::fabs(viTriHienTai - viTriCanBangSauChuyenMode) < 0.005 &&
+                std::fabs(vanTocHienTai) < 0.005 && std::fabs(gocHienTai - gocLech) < 0.001,
+                "Xe hoi tu dung diem can bang sau khi chuyen mode voi lech trong tam chua bu");
     }
 
     // 6. Kiem tra goi lenh nhi phan 8 byte (WebSocket/UDP/ESP-NOW) va duong cong keo tang toc 2 joystick:

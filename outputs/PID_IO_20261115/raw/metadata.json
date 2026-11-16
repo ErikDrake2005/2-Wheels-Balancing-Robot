@@ -1,0 +1,71 @@
+{
+  "port": "COM11",
+  "baud": 115200,
+  "trial_type": "stationary_arm",
+  "purpose": "io_dataset",
+  "condition": "floor-unheld",
+  "requested_duration_s": 63.0,
+  "settle_s": 3,
+  "requested_mode": "pid",
+  "requested_gains": {},
+  "step_limit_hz": 40000.0,
+  "motor_off_confirmed": true,
+  "completed": true,
+  "errors": [],
+  "measurement_window_complete": true,
+  "io_dataset_valid": true,
+  "firmware_configurations": [
+    {
+      "cfg": 22,
+      "mode": 0,
+      "kp0": 33.0,
+      "ki0": 0.0,
+      "kd0": 3.3,
+      "kpv0": 0.15,
+      "kiv0": 0.06,
+      "bench": 0,
+      "vloop": 1
+    }
+  ],
+  "status_lines": [
+    "Mode=PID_THUAN EN=0 fault=none bench=0 vloop=1 invDir=0 telemetry=1 tw=0 research=0",
+    "PID_THUAN: Kp=33.000 Ki=0.000 Kd=3.300 | Kpv=0.1500 Kiv=0.0600",
+    "PID_MO base: Kp=30.000 Ki=0.000 Kd=3.000 | Kpv=0.1500 Kiv=0.0600",
+    "Equilibrium: ref=0.00177rad (0.10deg) | IMU_biasOk=1 (2.029,0.567,-0.193 dps)",
+    "MKS_UART (vFOC MStep=64, stepMaxHz=40000, 65536/rev, baud=115200, vFOC_fusion=0): L(ok=1 addr=0xE2 rx=134788 encStep=1385) R(ok=1 addr=0xE1 rx=134789 encStep=-2681)",
+    "Mode=PID_THUAN EN=0 fault=none bench=0 vloop=1 invDir=0 telemetry=1 tw=0 research=0",
+    "PID_THUAN: Kp=33.000 Ki=0.000 Kd=3.300 | Kpv=0.1500 Kiv=0.0600",
+    "PID_MO base: Kp=30.000 Ki=0.000 Kd=3.000 | Kpv=0.1500 Kiv=0.0600",
+    "Equilibrium: ref=0.00177rad (0.10deg) | IMU_biasOk=1 (2.029,0.567,-0.193 dps)",
+    "MKS_UART (vFOC MStep=64, stepMaxHz=40000, 65536/rev, baud=115200, vFOC_fusion=0): L(ok=1 addr=0xE2 rx=144283 encStep=1350) R(ok=1 addr=0xE1 rx=144284 encStep=-2718)"
+  ],
+  "nc_samples": 3155,
+  "summary": {
+    "valid_active_measure_samples": 3001,
+    "observed_measure_span_s": 59.998155,
+    "longest_measure_run_s": 59.998155,
+    "source_rate_hz": 50.00153754727958,
+    "inferred_missing_slots": 0,
+    "missing_fraction": 0.0,
+    "mean_error_deg": 0.017163630246913746,
+    "rmse_error_deg": 0.3697996660793364,
+    "p95_abs_error_deg": 0.5838302422512258,
+    "max_abs_error_deg": 0.7170182924339515,
+    "rms_rate_rad_s": 0.09737644171360015,
+    "wheel_command_saturation_fraction": 0.0
+  },
+  "columns": {
+    "t_s": "seconds from first positive IMU t_us in this file",
+    "e_deg": "degrees(theta-target)",
+    "u_cmd_mps2": "a_cmd, longitudinal acceleration command [m/s^2]",
+    "y_pitch_rad": "theta, measured pitch estimate [rad]",
+    "target": "pitch reference [rad]",
+    "eq": "pitch at equilibrium [rad]",
+    "rate": "pitch rate [rad/s]",
+    "v": "estimated speed [m/s]",
+    "cmdL": "left wheel STEP/s",
+    "cmdR": "right wheel STEP/s",
+    "feedback": "0 unavailable, 1 STEP, 2 encoder"
+  },
+  "notes": "phase/mode/EN lấy từ firmware. Không xác định xe được giữ, đặt trên sàn hay nhấc bánh từ Serial. Missing slots ước tính từ khoảng cách timestamp nguồn trong từng đoạn measure active. Bão hòa là |cmdL| hoặc |cmdR| >=99,9% trần tần số chỉ định."
+}

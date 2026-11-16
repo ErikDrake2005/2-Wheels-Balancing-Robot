@@ -25,12 +25,14 @@ constexpr float kpGoc = 30.0f;
 constexpr float kiGoc = 0.0f;
 constexpr float kdGoc = 3.0f;
 
-// Bộ thông số độc lập dành riêng cho chế độ PID THUẦN (CheDoDieuKhien::PidThuan):
-constexpr float kpGocPidThuan = 30.0f;
+// PID thuần chọn từ các lượt khảo sát đứng cân bằng trên sàn ngày 15/11/2026.
+// Đây là bộ tốt nhất trong phạm vi đã thử; NVS có thể ghi đè các giá trị mặc định này.
+// Vòng ngoài giữ .15/.06 của xe đã đo; chưa suy rộng sang chạy/rẽ hoặc tải khác.
+constexpr float kpGocPidThuan = 33.0f;
 constexpr float kiGocPidThuan = 0.0f;
-constexpr float kdGocPidThuan = 3.0f;
+constexpr float kdGocPidThuan = 3.3f;
 constexpr float kpVanTocPidThuan = 0.15f;
-constexpr float kiVanTocPidThuan = 0.08f;
+constexpr float kiVanTocPidThuan = 0.06f;
 
 constexpr float gioiHanTichPhanGoc_rad_s = 0.1f;
 // Chưa nâng: cần xác nhận mô-men 17HS4401S/nguồn trước (đánh giá M1).
@@ -60,7 +62,7 @@ constexpr bool batKhoaViTriChinhXac = true;
 constexpr float kiViTri_radpms = 0.0f;           // Giữ = 0 vì con lắc ngược có zero nửa mặt phẳng phải (non-minimum phase).
 constexpr float gioiHanSaiLechViTri_m = 0.50f;   // Chặn sai lệch vị trí tối đa ±0,50 m để chống vọt góc khi bị nhấc xe.
 constexpr float gocBuTrongTamToiDa_rad = 0.035f; // Giới hạn góc bù tối đa ±0,035 rad (~±2,0 độ).
-constexpr float gocDatToiDa_rad = 0.10f;
+constexpr float gocDatToiDa_rad = 0.14f;
 constexpr float vanTocDat_mps = 0.0f;
 constexpr bool batGiuHuongQuay = true;
 constexpr float kpGiuHuongQuay = 1.8f;
@@ -71,11 +73,11 @@ constexpr float nguongVanTocTinhBanh = 0.08f;
 constexpr float hangSoLocVanToc_s = 0.03f;
 // PT1 chỉ ở đường D/đầu vào tốc độ của mờ, không lọc chậm đường tích phân góc.
 constexpr float tanSoLocGyroD_hz = 40.0f; // Danh nghĩa liên tục; -3 dB rời rạc xem báo cáo.
-constexpr float vanTocDiChuyenToiDa_mps = 0.20f;
+constexpr float vanTocDiChuyenToiDa_mps = 0.50f;
 constexpr float tocDoQuayToiDa_radps = 0.80f;
 constexpr float giaTocLenhDiChuyen_mps2 = 0.50f;
 constexpr float giaTocLenhQuay_radps2 = 2.0f;
-constexpr float vanTocThuSerial_mps = 0.15f;
+constexpr float vanTocThuSerial_mps = 0.25f;
 constexpr float tocDoQuayThuSerial_radps = 0.60f;
 constexpr uint32_t hanLenhDiChuyen_us = 500000;
 

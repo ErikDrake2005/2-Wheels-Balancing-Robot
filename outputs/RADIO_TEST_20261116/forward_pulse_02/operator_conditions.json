@@ -1,0 +1,7 @@
+{
+  "condition": "floor-unheld",
+  "source": "User confirmed no body holding/contact and readiness for backward pulse",
+  "pulse": "single +0.05m/s requested for0.3s; no yaw",
+  "motor_off_confirmed": true,
+  "not_long_duration_vibration_test": true
+}

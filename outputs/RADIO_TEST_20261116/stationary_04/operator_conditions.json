@@ -1,0 +1,6 @@
+{
+  "condition": "floor-unheld",
+  "source": "User confirmed self-balancing with no holding/contact",
+  "motor_off_confirmed": true,
+  "not_motion_test": true
+}

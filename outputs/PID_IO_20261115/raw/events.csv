@@ -1,0 +1,28 @@
+﻿host_utc,host_elapsed_s,type,detail
+2026-11-15T15:42:47.611+00:00,0.000000,tx,status
+2026-11-15T15:42:47.611+00:00,0.000000,tx,research 1
+2026-11-15T15:42:47.613+00:00,0.000000,console,=== TRANG THAI HE THONG ===
+2026-11-15T15:42:47.615+00:00,0.000000,console,Mode=PID_THUAN EN=0 fault=none bench=0 vloop=1 invDir=0 telemetry=1 tw=0 research=0
+2026-11-15T15:42:47.616+00:00,0.000000,console,PID_THUAN: Kp=33.000 Ki=0.000 Kd=3.300 | Kpv=0.1500 Kiv=0.0600
+2026-11-15T15:42:47.617+00:00,0.000000,console,PID_MO base: Kp=30.000 Ki=0.000 Kd=3.000 | Kpv=0.1500 Kiv=0.0600
+2026-11-15T15:42:47.617+00:00,0.000000,console,"Equilibrium: ref=0.00177rad (0.10deg) | IMU_biasOk=1 (2.029,0.567,-0.193 dps)"
+2026-11-15T15:42:47.619+00:00,0.000000,console,"Live: theta=1.06deg rate=-0.006rad/s target=0.10deg K_active=(0.00,0.00,0.00) STEP=-600,-600"
+2026-11-15T15:42:47.621+00:00,0.016000,console,"MKS_UART (vFOC MStep=64, stepMaxHz=40000, 65536/rev, baud=115200, vFOC_fusion=0): L(ok=1 addr=0xE2 rx=134788 encStep=1385) R(ok=1 addr=0xE1 rx=134789 encStep=-2681)"
+2026-11-15T15:42:47.622+00:00,0.016000,console,WiFi_AP=XeCanBang-S3 URL=http://192.168.4.1 WS=ws://192.168.4.1:81 UDP=4210 rxNhiPhan=0 | ESP_NOW=ON MAC=AC:27:6E:D0:3A:24 rxGoi=0
+2026-11-15T15:42:47.630+00:00,0.016000,header,"NC_HEADER,t_us,seq,cseq,cfg,csess,cphase,mode,cfault,valid,m_us,msess,mphase,en,mfault,theta,rate,target,eq,e,v,vref,yawref,cmdL,cmdR,kp,ki,kd,miss,age_us,drop,i2c,late,a_cmd,feedback"
+2026-11-15T15:42:47.632+00:00,0.016000,config,"NC_CFG,22,0,33,0,3.3,0.15,0.06,0,1"
+2026-11-15T15:42:47.670+00:00,0.063000,tx,arm
+2026-11-15T15:42:47.695+00:00,0.078000,active,session=23 t_us=884905971
+2026-11-15T15:43:50.693+00:00,63.078000,tx,disarm
+2026-11-15T15:43:50.709+00:00,63.094000,tx,research 0
+2026-11-15T15:43:50.709+00:00,63.094000,tx,status
+2026-11-15T15:43:50.714+00:00,63.094000,console,=== TRANG THAI HE THONG ===
+2026-11-15T15:43:50.716+00:00,63.110000,console,Mode=PID_THUAN EN=0 fault=none bench=0 vloop=1 invDir=0 telemetry=1 tw=0 research=0
+2026-11-15T15:43:50.718+00:00,63.110000,console,PID_THUAN: Kp=33.000 Ki=0.000 Kd=3.300 | Kpv=0.1500 Kiv=0.0600
+2026-11-15T15:43:50.720+00:00,63.110000,console,PID_MO base: Kp=30.000 Ki=0.000 Kd=3.000 | Kpv=0.1500 Kiv=0.0600
+2026-11-15T15:43:50.722+00:00,63.110000,console,"Equilibrium: ref=0.00177rad (0.10deg) | IMU_biasOk=1 (2.029,0.567,-0.193 dps)"
+2026-11-15T15:43:50.726+00:00,63.110000,console,"Live: theta=0.46deg rate=-0.091rad/s target=0.10deg K_active=(0.00,0.00,0.00) STEP=-624,-624"
+2026-11-15T15:43:50.730+00:00,63.125000,console,"MKS_UART (vFOC MStep=64, stepMaxHz=40000, 65536/rev, baud=115200, vFOC_fusion=0): L(ok=1 addr=0xE2 rx=144283 encStep=1350) R(ok=1 addr=0xE1 rx=144284 encStep=-2718)"
+2026-11-15T15:43:50.736+00:00,63.125000,console,WiFi_AP=XeCanBang-S3 URL=http://192.168.4.1 WS=ws://192.168.4.1:81 UDP=4210 rxNhiPhan=0 | ESP_NOW=ON MAC=AC:27:6E:D0:3A:24 rxGoi=0
+2026-11-15T15:43:50.870+00:00,63.250000,console,"EN=0 fuzzy=0 ctrl=PID_THUAN fault=none ready=none motorFault=0 last=0 theta=0.0132 rate=0.0404 target=0.0018 x=-0.0117 v=0.0017 STEP=-624,-624 cmd=0.0,0.0 K=0.00,0.00,0.00 serviceMax=1165us roll=0.0242 accel=9.74 phase=0 epoch=24 miss=0 dup=0 overlap=0 gyroD=0.0000 innov=0.0005 trust=0.972 vref=0.000 yawref=0.000 tilt=0.0275 tiltDir=-1.0719 thetaDeg=0.75 targetDeg=0.10 fw=research-20261115 frame=1 angleValid=1 biasOk=1 rawSeq=189392 irqSeq=189392 irqAgeMs=4 imuAgeMs=4 okAgeMs=3 imuOk=189392 imuWait=0 imuI2c=0 imuEmpty=0 ackRecovery=0 imuLate=0 readStatus=1 i2cLast=0 regLast=0x00 rx=15/15 used=15 readUs=753 readMaxUs=3192 rxErr=0/0 usedErr=0 errReadUs=0 hw=MKS wErrRad=0.0000,0.0000 wBu=0.000,0.000 eqDeg=0.10 bench=0 vloop=1 mksL=0xE2:144306:1350 mksR=0xE1:144307:-2716"
+2026-11-15T15:43:51.069+00:00,63.453000,console,"EN=0 fuzzy=0 ctrl=PID_THUAN fault=none ready=none motorFault=0 last=0 theta=0.0160 rate=-0.0114 target=0.0018 x=-0.0116 v=-0.0003 STEP=-624,-624 cmd=0.0,0.0 K=0.00,0.00,0.00 serviceMax=1165us roll=0.0243 accel=9.75 phase=0 epoch=24 miss=0 dup=0 overlap=0 gyroD=0.0000 innov=0.0014 trust=0.976 vref=0.000 yawref=0.000 tilt=0.0291 tiltDir=-0.9873 thetaDeg=0.92 targetDeg=0.10 fw=research-20261115 frame=1 angleValid=1 biasOk=1 rawSeq=189432 irqSeq=189432 irqAgeMs=5 imuAgeMs=5 okAgeMs=4 imuOk=189432 imuWait=0 imuI2c=0 imuEmpty=0 ackRecovery=0 imuLate=0 readStatus=1 i2cLast=0 regLast=0x00 rx=15/15 used=15 readUs=815 readMaxUs=3192 rxErr=0/0 usedErr=0 errReadUs=0 hw=MKS wErrRad=0.0000,0.0000 wBu=0.000,0.000 eqDeg=0.10 bench=0 vloop=1 mksL=0xE2:144337:1350 mksR=0xE1:144338:-2716"

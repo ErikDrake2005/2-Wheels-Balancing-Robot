@@ -1,0 +1,10 @@
+{
+  "condition": "floor; held during motor startup then released",
+  "operator_statement": "Held body for a few initial milliseconds for enable/balance then released; exact release relative to pulse awaiting clarification",
+  "first_3_seconds_excluded_from_motion_window": true,
+  "motion_window_contact_validity": "INVALID for direction comparison",
+  "motor_off_confirmed": true,
+  "do_not_label_whole_trial_hand_free": true,
+  "operator_clarification": "User held body until robot began moving backward, then released",
+  "exclude_from_unheld_motion_analysis": true
+}

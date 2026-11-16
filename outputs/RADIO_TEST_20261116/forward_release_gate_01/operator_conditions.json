@@ -1,0 +1,9 @@
+{
+  "condition": "floor-unheld during measurement",
+  "release_confirmed_before_motion": true,
+  "release_gate_file": ".cache\\motion_debug\\forward_release_gate_01.flag",
+  "settle_seconds_after_release": 3,
+  "contact_before_release_excluded": true,
+  "motor_off_confirmed": true,
+  "not_long_duration_or_max_speed_test": true
+}

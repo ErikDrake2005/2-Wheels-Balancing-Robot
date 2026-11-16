@@ -2,13 +2,11 @@
 #include "driver/pulse_cnt.h"
 #include "model/WheelPulseFrame.h"
 #include "core/BoGiaiMaUartMks.h"
+#include "LichHoiUartMks.h"
 
 // Khởi tạo SAU MCPWM khi motor disabled; đọc bởi duy nhất MotorTask.
-// Kết hợp lai ghép (Hybrid):
-// 1. PCNT phần cứng quan sát trực tiếp STEP/DIR (độ trễ 0 us cho vòng cân bằng 200 Hz).
-// 2. UART không chặn (Non-blocking) đọc cảm biến từ 14-bit (16384 xung/vòng, lệnh 0x30)
-//    trên 2 module MKS Servo42C V1.1 qua 3 chân (GPIO1 = TX chung, GPIO3 = RX1, GPIO4 = RX2)
-//    để hiệu chỉnh vị trí tuyệt đối và bù trượt bước thực tế.
+// PCNT đếm STEP/DIR. Hai UART theo dõi encoder 0x30, quy đổi theo soXungEncoderMksMoiVong.
+// Chỉ hợp nhất số đo UART vào PCNT khi cấu hình batBuTruotUartMksVaoXung bật.
 class WheelPulseCounter {
 public:
     bool begin();
@@ -38,19 +36,22 @@ private:
         double buTuKeDaLoc = 0.0;
         int64_t buTuKe = 0;
         uint32_t soKhungUart = 0;
+        uint32_t soLanHoiUart = 0;
+        uint64_t thoiDiemHoiUart_us = 0;
+        uint64_t thoiDiemNhanUart_us = 0;
     };
     bool beginAxis(Axis& trucBanh, int chanXung, int chanChieu, bool mucTienCao);
     bool readAxis(Axis& trucBanh);
     void resetAxis(Axis& trucBanh);
     void capNhatLocBuTuKe(Axis& trucBanh, double dt_s);
-    void serviceUartMks(uint64_t thoiDiem_us);
+    void serviceUartMks();
     void docKenhUartMks(int congUart, Axis& trucBanh, uint8_t diaChiUuTien, uint8_t diaChiDuPhong,
                         bool chieuTienDuong);
 
     Axis _banhTrai, _banhPhai;
-    uint64_t _lanHoiUartTruoc_us = 0;
+    LichHoiUartMks _lichHoiUart;
+    uint32_t _soLoiGhiUart = 0;
     uint64_t _thoiDiemDocTruoc_us = 0;
-    bool _luotHoiPhai = false;
     bool _uartSanSang = false;
     bool _daSanSang = false;
 };

@@ -23,6 +23,28 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Watchdog test compilation failed' }
     & ./.cache/watchdog_tests.exe
     if ($LASTEXITCODE -ne 0) { throw 'Watchdog tests failed' }
+    & $TrinhBienDich -std=c++17 -O2 -Wall -Wextra -Werror -static -Isrc `
+        test/native/research_logger_tests.cpp -o .cache/research_logger_tests.exe
+    if ($LASTEXITCODE -ne 0) { throw 'Research logger test compilation failed' }
+    & ./.cache/research_logger_tests.exe
+    if ($LASTEXITCODE -ne 0) { throw 'Research logger tests failed' }
+    & $TrinhBienDich -std=c++17 -O2 -Wall -Wextra -Werror -static -Iinclude -Ilib/motor_drv/src `
+        test/native/uart_schedule_tests.cpp -o .cache/uart_schedule_tests.exe
+    if ($LASTEXITCODE -ne 0) { throw 'UART schedule test compilation failed' }
+    & ./.cache/uart_schedule_tests.exe
+    if ($LASTEXITCODE -ne 0) { throw 'UART schedule tests failed' }
+    & $TrinhBienDich -std=c++17 -O2 -Wall -Wextra -Werror -static -Iinclude `
+        test/native/motor_timing_tests.cpp -o .cache/motor_timing_tests.exe
+    if ($LASTEXITCODE -ne 0) { throw 'Motor timing test compilation failed' }
+    & ./.cache/motor_timing_tests.exe
+    if ($LASTEXITCODE -ne 0) { throw 'Motor timing tests failed' }
+    foreach ($remoteTest in @('espnow_protocol_tests','remote_lease_tests')) {
+        & $TrinhBienDich -std=c++17 -O2 -Wall -Wextra -Werror -static -Iinclude `
+            "test/native/$remoteTest.cpp" -o ".cache/$remoteTest.exe"
+        if ($LASTEXITCODE -ne 0) { throw "$remoteTest compilation failed" }
+        & ".cache/$remoteTest.exe"
+        if ($LASTEXITCODE -ne 0) { throw "$remoteTest failed" }
+    }
     & $TrinhBienDich -std=c++17 -O2 -Wall -Wextra -Werror -static -Iinclude -Isrc `
         -Ilib/controllers -Ilib/estimation -Ilib/kinematics `
         test/native/filter_motion_tests.cpp lib/controllers/AnglePidController.cpp `

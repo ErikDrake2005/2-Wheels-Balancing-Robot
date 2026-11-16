@@ -7,9 +7,9 @@
 
 double DifferentialDrive::metersPerStep() {
     static_assert(banKinhBanh_m > 0 && soBuocDayDuMoiVongDongCo > 0 &&
-        soViBuocDauVaoMks > 0 && soVongDongCoTrenMotVongBanh > 0, "Thong so banh xe khong hop le");
+        soViBuocDauVaoDriver > 0 && soVongDongCoTrenMotVongBanh > 0, "Thong so banh xe khong hop le");
     return 6.283185307179586 * banKinhBanh_m /
-        (soBuocDayDuMoiVongDongCo * static_cast<double>(soViBuocDauVaoMks) *
+        (soBuocDayDuMoiVongDongCo * static_cast<double>(soViBuocDauVaoDriver) *
          soVongDongCoTrenMotVongBanh);
 }
 

@@ -16,4 +16,14 @@ struct WheelPulseFrame {
     uint8_t diaChiUartPhai = 0;
     bool coUartTrai = false;
     bool coUartPhai = false;
+    // Tính từ reset odometry. soKhungUart* đếm khung hợp lệ mới nhất đã chọn cho mỗi lần đọc FIFO.
+    uint32_t soLanHoiUartTrai = 0;
+    uint32_t soLanHoiUartPhai = 0;
+    uint32_t soLoiGhiUart = 0;
+    uint64_t soKheUartBoLo = 0;
+    // Đồng hồ MCU: lúc driver nhận đủ 3 byte TX, và lúc MCU đọc/chấp nhận RX (khác lúc cảm biến lấy mẫu).
+    uint64_t thoiDiemHoiUartTrai_us = 0;
+    uint64_t thoiDiemHoiUartPhai_us = 0;
+    uint64_t thoiDiemNhanUartTrai_us = 0;
+    uint64_t thoiDiemNhanUartPhai_us = 0;
 };

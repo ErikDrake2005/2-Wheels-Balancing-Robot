@@ -47,8 +47,8 @@ private:
     bool _daDongBoViTri = false;
     float _vanTocMucTieu_mps = 0, _tocDoQuayMucTieu_radps = 0, _giaTocBanhDaLenh_mps2 = 0;
     float _gocCanBang_rad = 0.0f;
-    float _kpVanTocPidThuan = 0.15f;
-    float _kiVanTocPidThuan = 0.08f;
+    float _kpVanTocPidThuan = kpVanTocPidThuan;
+    float _kiVanTocPidThuan = kiVanTocPidThuan;
     float kpVanTocPidMo = 0.15f;
     float kiVanTocPidMo = 0.06f;
     bool _batVongNgoai = true;
@@ -56,4 +56,5 @@ private:
     float hieuViTriHaiBanhMucTieu = 0.0f;
     bool daDongBoHuongQuay = false;
     bool dangDiChuyenDocTruoc = false;
+    bool coLenhDiChuyenDocTruoc = false;
 };

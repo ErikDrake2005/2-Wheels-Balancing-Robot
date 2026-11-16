@@ -221,6 +221,7 @@ bool RobotApp::begin() {
     trangThaiBanDau.trangThaiBoDieuKhienDongCo = _capDongCo.snapshot();
     trangThaiBanDau.khungXung = _boDemXung.read();
     trangThaiBanDau.dungPidMo = _cauHinhChay.dungPidMo;
+    trangThaiBanDau.thoiDiemSnapshot_us = nowUs();
     xQueueOverwrite(_hangDoiTrangThaiDongCo, &trangThaiBanDau);
     if (xTaskCreatePinnedToCore(imuEntry, "Imu", 4096, this, 4, &_tacVuImu, 1) != pdPASS ||
         xTaskCreatePinnedToCore(controlEntry, "Control", 6144, this, 3, &_tacVuDieuKhien, 1) != pdPASS ||
@@ -255,7 +256,11 @@ bool RobotApp::begin() {
         },
         [this](char kyTuLenh) { xuLyPhimDonSerial(kyTuLenh); },
         [this](const char* dongLenh) { xuLyDongLenhSerial(dongLenh); },
-        [this](ThongTinTrangThaiWeb& trangThaiRa) { dienTrangThaiWeb(trangThaiRa); });
+        [this](ThongTinTrangThaiWeb& trangThaiRa) { dienTrangThaiWeb(trangThaiRa); },
+        [this](const uint8_t* mac, const uint8_t* data, size_t length) {
+            return lienKetChanDoan.receive(mac, data, length, nowUs());
+        });
+    if (dieuKhienKhongDay.espNowSanSang()) lienKetChanDoan.begin();
     inDinhDangSerial("FIRMWARE %s; INT latched, runtime burst INT_STATUS+14 byte; I2C=%luHz timeout=%ums; NVS=%s; mode=%s\n",
         phienBanFirmware,static_cast<unsigned long>(tanSoI2cIcm_hz),thoiGianChoI2c_ms,
         daNapNvs ? "LOADED" : "DEFAULT", _cauHinhChay.dungPidMo ? "PID_MO" : "PID_THUAN");
@@ -465,6 +470,17 @@ void RobotApp::controlLoop() {
         baoCaoDieuKhien.trangThaiXe = trangThaiXe;
         baoCaoDieuKhien.khungCamBien = khungDuLieu;
         baoCaoDieuKhien.maPhien = trangThaiDongCo.maPhien;
+        baoCaoDieuKhien.phaDieuKhien = trangThaiDongCo.cheDo;
+        baoCaoDieuKhien.dungPidMo = trangThaiDongCo.dungPidMo;
+        baoCaoDieuKhien.phienBanCauHinh = phienBanCauHinhTruoc;
+        baoCaoDieuKhien.bench = _boDieuKhienTang.cheDoThuKhongMaSat();
+        baoCaoDieuKhien.vongNgoai = _boDieuKhienTang.batVongNgoai();
+        baoCaoDieuKhien.heSoGocCoSo = trangThaiDongCo.dungPidMo ?
+            _boDieuKhienTang.pidGocMoCoSo() : _boDieuKhienTang.pidGocThuan();
+        baoCaoDieuKhien.kpVanTocCoSo = trangThaiDongCo.dungPidMo ?
+            _boDieuKhienTang.kpVanTocMo() : _boDieuKhienTang.kpVanTocThuan();
+        baoCaoDieuKhien.kiVanTocCoSo = trangThaiDongCo.dungPidMo ?
+            _boDieuKhienTang.kiVanTocMo() : _boDieuKhienTang.kiVanTocThuan();
         baoCaoDieuKhien.soMauBoLo = khungDuLieu.soMauBoLo;
         baoCaoDieuKhien.soThongBaoTrung = khungDuLieu.soThongBaoTrung;
         baoCaoDieuKhien.soLanDocChongNgat = khungDuLieu.soLanDocChongNgat;
@@ -482,12 +498,19 @@ void RobotApp::controlLoop() {
         xQueuePeek(_hangDoiDiChuyen, &lenhDiChuyen, 0);
         const bool choDiChuyen = trangThaiDongCo.cheDo == CheDoCanBang::DangChay &&
             lenhDiChuyen.hopLe(trangThaiDongCo.maPhien, thoiDiemHienTai_us);
+        float vanTocTuXa = choDiChuyen ? lenhDiChuyen.vanToc_mps : 0;
+        float quayTuXa = choDiChuyen ? lenhDiChuyen.tocDoQuay_radps : 0;
+        float vRadio = 0, yawRadio = 0;
+        if (lienKetChanDoan.desired(thoiDiemHienTai_us, vRadio, yawRadio)) {
+            vanTocTuXa = trangThaiDongCo.cheDo == CheDoCanBang::DangChay ? vRadio : 0;
+            quayTuXa = trangThaiDongCo.cheDo == CheDoCanBang::DangChay ? yawRadio : 0;
+        }
         if (baoCaoDieuKhien.loi == FaultCode::None &&
             !_boDieuKhienTang.update(trangThaiXe, thoiDiemHienTai_us, trangThaiDongCo.dungPidMo,
-                baoCaoDieuKhien.lenhBanh, choDiChuyen ? lenhDiChuyen.vanToc_mps : 0,
-                choDiChuyen ? lenhDiChuyen.tocDoQuay_radps : 0))
+                baoCaoDieuKhien.lenhBanh, vanTocTuXa, quayTuXa))
             baoCaoDieuKhien.loi = FaultCode::InvalidControl;
         baoCaoDieuKhien.heSoPid = _boDieuKhienTang.heSoPid();
+        baoCaoDieuKhien.giaTocLenh_mps2 = _boDieuKhienTang.giaTocBanhDaLenh_mps2();
         baoCaoDieuKhien.vongKinBanh = _boDieuKhienTang.trangThaiVongKinBanh();
         baoCaoDieuKhien.gocDat_rad = _boDieuKhienTang.gocDat_rad();
         baoCaoDieuKhien.gyroDaLoc_radps = _boDieuKhienTang.tocDoDaLoc_radps();
@@ -514,6 +537,9 @@ void RobotApp::motorLoop() {
     for (;;) {
         uint32_t cacSuKien = 0;
         xTaskNotifyWait(0, UINT32_MAX, &cacSuKien, pdMS_TO_TICKS(1));
+        const auto lenhRadio = lienKetChanDoan.serviceMotor(nowUs(), _capDongCo.isEnabled());
+        if (lenhRadio.arm) cacSuKien |= suKienBatDongCo;
+        if (lenhRadio.disable) cacSuKien |= suKienTatDongCo;
         // Nhận lỗi ISR giám sát trước khi xét bất kỳ yêu cầu bật lại nào.
         if (_capDongCo.service() == MksResult::FaultLatched) {
             if (baoCaoDongCo.loi == FaultCode::None) baoCaoDongCo.loi = FaultCode::MotorFault;
@@ -569,10 +595,12 @@ void RobotApp::motorLoop() {
 
         // Cùng một lượt nhận lệnh: dừng khẩn/tắt luôn ưu tiên hơn bật.
         if (cacSuKien & suKienDungKhan) {
+            lienKetChanDoan.cancel();
             baoCaoDongCo.loi = FaultCode::EmergencyStop;
             phienCanBang.tat();
             _capDongCo.emergencyStop();
         } else if (cacSuKien & suKienTatDongCo) {
+            lienKetChanDoan.cancel();
             phienCanBang.tat();
             _capDongCo.disable();
         } else if (cacSuKien & suKienXoaLoi) {
@@ -637,7 +665,7 @@ void RobotApp::motorLoop() {
         }
         const uint64_t thoiDiemTruocDocXung_us = nowUs();
         if (!baoCaoDongCo.khungXung.hopLe || thoiDiemDocXungTruoc_us == 0 ||
-            thoiDiemTruocDocXung_us - thoiDiemDocXungTruoc_us >= 1000u) {
+            thoiDiemTruocDocXung_us - thoiDiemDocXungTruoc_us >= chuKyDocPhanHoiBanh_us) {
             baoCaoDongCo.khungXung = _boDemXung.read();
             if (daoChieuDongCoHienTai && baoCaoDongCo.khungXung.hopLe) {
                 baoCaoDongCo.khungXung.trai = -baoCaoDongCo.khungXung.trai;
@@ -659,6 +687,7 @@ void RobotApp::motorLoop() {
         baoCaoDongCo.trangThaiBoDieuKhienDongCo = _capDongCo.snapshot();
         baoCaoDongCo.maPhien = phienCanBang.maPhien();
         baoCaoDongCo.cheDo = phienCanBang.cheDo();
+        baoCaoDongCo.thoiDiemSnapshot_us = nowUs();
         xQueueOverwrite(_hangDoiTrangThaiDongCo, &baoCaoDongCo);
     }
 }
@@ -675,7 +704,8 @@ void RobotApp::apDungCauHinh(const CauHinhChay& cauHinh) {
 
 void RobotApp::inDongSerial(const char* noiDung) {
     if (!noiDung) return;
-    Serial.println(noiDung);
+    if (_dangPhatNghienCuu) _nhatKyNghienCuu.them(noiDung, std::strlen(noiDung), true);
+    else Serial.println(noiDung);
     dieuKhienKhongDay.ghiDongNhatKy(noiDung);
 }
 
@@ -686,7 +716,8 @@ void RobotApp::inDinhDangSerial(const char* dinhDang, ...) {
     va_start(danhSachThamSo, dinhDang);
     std::vsnprintf(boDemTam, sizeof(boDemTam), dinhDang, danhSachThamSo);
     va_end(danhSachThamSo);
-    Serial.print(boDemTam);
+    if (_dangPhatNghienCuu) _nhatKyNghienCuu.them(boDemTam, std::strlen(boDemTam));
+    else Serial.print(boDemTam);
     dieuKhienKhongDay.ghiDongNhatKy(boDemTam);
 }
 
@@ -735,6 +766,8 @@ void RobotApp::inTroGiup() {
     inDongSerial("               b=bat/tat Bench Mode (nhac banh khong ma sat); v=bat/tat vong van toc/vi tri");
     inDongSerial("Chinh PID (kem Enter): kp X; ki X; kd X; kpv X; kiv X; kpv_p X; kpv_m X; ref X(rad); refdeg X(deg); bench 0|1; vloop 0|1; daochieu [0|1]");
     inDongSerial("Lenh khac: pid|fuzzy|mode pid|fuzzy; giuvitri; save=luu NVS; resetcfg=xoa NVS; status=xem cau hinh; t=stream; tw=web stream; i=RAW_IMU");
+    inDongSerial("research 1 = bat CSV NC 50 Hz; research 0 = tat CSV. Thoi gian nguon IMU tinh bang micro giay.");
+    inDongSerial("radio peer AA:BB:CC:DD:EE:FF = ghep cau noi ESP-NOW (motor tat); radio status = xem peer.");
     inDinhDangSerial("WiFi/ESP-NOW: SSID=%s PASS=%s URL=http://%s WS=ws://%s:%u UDP=%u MAC=%s\n",
                   tenMangWifiAp, matKhauWifiAp, dieuKhienKhongDay.diaChiIpAp(),
                   dieuKhienKhongDay.diaChiIpAp(), static_cast<unsigned>(congWebSocketNhiPhan),
@@ -747,7 +780,7 @@ void RobotApp::inTrangThaiChiTiet() {
     xQueuePeek(_hangDoiTrangThaiDongCo, &baoCaoDongCo, 0);
     const bool coBaoCao = xQueuePeek(_hangDoiTrangThaiDieuKhien, &baoCaoDieuKhien, 0) == pdTRUE;
     inDongSerial("=== TRANG THAI HE THONG ===");
-    inDinhDangSerial("Mode=%s EN=%d fault=%s bench=%d vloop=%d invDir=%d telemetry=%d tw=%d\n",
+    inDinhDangSerial("Mode=%s EN=%d fault=%s bench=%d vloop=%d invDir=%d telemetry=%d tw=%d research=%d\n",
                   _cauHinhChay.dungPidMo ? "PID_MO" : "PID_THUAN",
                   baoCaoDongCo.trangThaiBoDieuKhienDongCo.daBat,
                   faultName(baoCaoDongCo.loi),
@@ -755,7 +788,7 @@ void RobotApp::inTrangThaiChiTiet() {
                   _cauHinhChay.batVongNgoai ? 1 : 0,
                   _cauHinhChay.daoChieuDongCo ? 1 : 0,
                   _batTelemetry ? 1 : 0,
-                  batTelemetryWeb ? 1 : 0);
+                  batTelemetryWeb ? 1 : 0, _batNghienCuu ? 1 : 0);
     inDinhDangSerial("PID_THUAN: Kp=%.3f Ki=%.3f Kd=%.3f | Kpv=%.4f Kiv=%.4f\n",
                   _cauHinhChay.kpGocThuan, _cauHinhChay.kiGocThuan, _cauHinhChay.kdGocThuan,
                   _cauHinhChay.kpVanTocThuan, _cauHinhChay.kiVanTocThuan);
@@ -776,8 +809,9 @@ void RobotApp::inTrangThaiChiTiet() {
                       static_cast<long long>(baoCaoDongCo.khungXung.trai),
                       static_cast<long long>(baoCaoDongCo.khungXung.phai));
     }
-    inDinhDangSerial("MKS_UART (vFOC MStep=%lu, 65536/rev, baud=%lu, vFOC_fusion=%d): L(ok=%d addr=0x%02X rx=%lu encStep=%lld) R(ok=%d addr=0x%02X rx=%lu encStep=%lld)\n",
+    inDinhDangSerial("MKS_UART (vFOC MStep=%lu, stepMaxHz=%.0f, 65536/rev, baud=%lu, vFOC_fusion=%d): L(ok=%d addr=0x%02X rx=%lu encStep=%lld) R(ok=%d addr=0x%02X rx=%lu encStep=%lld)\n",
                   static_cast<unsigned long>(soViBuocDauVaoMks),
+                  static_cast<double>(tanSoStepToiDaMks_hz),
                   static_cast<unsigned long>(tocDoBaudUartMks_bps),
                   batBuTruotUartMksVaoXung ? 1 : 0,
                   baoCaoDongCo.khungXung.coUartTrai ? 1 : 0,
@@ -788,6 +822,29 @@ void RobotApp::inTrangThaiChiTiet() {
                   baoCaoDongCo.khungXung.diaChiUartPhai,
                   static_cast<unsigned long>(baoCaoDongCo.khungXung.soKhungUartPhai),
                   static_cast<long long>(baoCaoDongCo.khungXung.encoderPhai));
+    inDinhDangSerial("TIMING fw=%s cpuMHz=%lu mcpwmHz=%lu imuHz=%lu motorServiceUs=%lu feedbackUs=%lu uartWheelUs=%lu\n",
+                  phienBanFirmware,
+                  static_cast<unsigned long>(getCpuFrequencyMhz()),
+                  static_cast<unsigned long>(doPhanGiaiBoDemMcpwm_hz),
+                  static_cast<unsigned long>(tanSoLayMauIcm_hz),
+                  static_cast<unsigned long>(chuKyPhucVuMotor_us),
+                  static_cast<unsigned long>(chuKyDocPhanHoiBanh_us),
+                  static_cast<unsigned long>(chuKyDocUartMks_us));
+    if (!dungPhanCungTmcMt) {
+        // Tuổi tại chính snapshot motor, không cộng thời gian in các dòng Serial phía trên.
+        const uint64_t lucXem_us = baoCaoDongCo.thoiDiemSnapshot_us;
+        const auto tuoiNhan_us = [lucXem_us](uint64_t moc_us) -> long long {
+            return moc_us && moc_us <= lucXem_us ? static_cast<long long>(lucXem_us - moc_us) : -1;
+        };
+        inDinhDangSerial("MKS_UART_DIAG snapshotUs=%llu L(query=%lu rxAgeSnapshotUs=%lld) R(query=%lu rxAgeSnapshotUs=%lld) skippedSlots=%llu txErrors=%lu\n",
+            static_cast<unsigned long long>(lucXem_us),
+            static_cast<unsigned long>(baoCaoDongCo.khungXung.soLanHoiUartTrai),
+            tuoiNhan_us(baoCaoDongCo.khungXung.thoiDiemNhanUartTrai_us),
+            static_cast<unsigned long>(baoCaoDongCo.khungXung.soLanHoiUartPhai),
+            tuoiNhan_us(baoCaoDongCo.khungXung.thoiDiemNhanUartPhai_us),
+            static_cast<unsigned long long>(baoCaoDongCo.khungXung.soKheUartBoLo),
+            static_cast<unsigned long>(baoCaoDongCo.khungXung.soLoiGhiUart));
+    }
     inDinhDangSerial("WiFi_AP=%s URL=http://%s WS=ws://%s:%u UDP=%u rxNhiPhan=%lu | ESP_NOW=%s MAC=%s rxGoi=%lu\n",
                   dieuKhienKhongDay.wifiSanSang() ? tenMangWifiAp : "OFF",
                   dieuKhienKhongDay.diaChiIpAp(),
@@ -958,6 +1015,34 @@ void RobotApp::xuLyDongLenhSerial(const char* dongLenh) {
 
     if (std::strcmp(banSao, "help") == 0) { inTroGiup(); return; }
     if (std::strcmp(banSao, "status") == 0) { inTrangThaiChiTiet(); return; }
+    if (std::strcmp(banSao, "radio status") == 0) {
+        inDinhDangSerial("RADIO peer=%s enabled=%d\n", lienKetChanDoan.peerText(), lienKetChanDoan.enabled());
+        return;
+    }
+    if (std::strncmp(banSao, "radio peer ", 11) == 0) {
+        unsigned b[6]; int n = 0;
+        if (trangThaiDongCo.cheDo != CheDoCanBang::Tat ||
+            std::sscanf(banSao + 11, "%2x:%2x:%2x:%2x:%2x:%2x%n", &b[0], &b[1], &b[2], &b[3], &b[4], &b[5], &n) != 6 || banSao[11+n]) {
+            inDongSerial("RADIO ERROR: motor phai tat, cu phap radio peer AA:BB:CC:DD:EE:FF"); return;
+        }
+        uint8_t mac[6]; for (unsigned i = 0; i < 6; ++i) mac[i] = static_cast<uint8_t>(b[i]);
+        inDongSerial(lienKetChanDoan.setPeer(mac) ? "RADIO peer saved; restart bridge connect" : "RADIO ERROR: cannot save peer");
+        return;
+    }
+    if (std::strcmp(banSao, "research 1") == 0) {
+        _batNghienCuu = _dangPhatNghienCuu = true;
+        _canTieuDeNghienCuu = _canCauHinhNghienCuu = true;
+        _soMauNghienCuuBo = _thuTuDaGhi = 0;
+        _henMauNghienCuu_us = nowUs();
+#if ARDUINO_USB_CDC_ON_BOOT
+        Serial.setTxTimeoutMs(0);
+#endif
+        return;
+    }
+    if (std::strcmp(banSao, "research 0") == 0) {
+        _batNghienCuu = false;
+        return;
+    }
     if (std::strcmp(banSao, "arm") == 0) { xuLyPhimDonSerial('a'); return; }
     if (std::strcmp(banSao, "disarm") == 0 || std::strcmp(banSao, "stop") == 0) { xuLyPhimDonSerial('d'); return; }
     if (std::strcmp(banSao, "clear") == 0) { xuLyPhimDonSerial('k'); return; }
@@ -1008,8 +1093,9 @@ void RobotApp::xuLyDongLenhSerial(const char* dongLenh) {
             prefs.clear();
             prefs.end();
         }
+        const uint32_t phienBanMoi = _cauHinhChay.phienBan + 1u;
         _cauHinhChay = CauHinhChay{};
-        ++_cauHinhChay.phienBan;
+        _cauHinhChay.phienBan = phienBanMoi;
         xQueueOverwrite(_hangDoiCauHinh, &_cauHinhChay);
         xTaskNotify(_tacVuDongCo, _cauHinhChay.dungPidMo ? suKienChonPidMo : suKienChonPidThuan, eSetBits);
         inDongSerial("[NVS] Da xoa NVS va khoi phuc thong so mac dinh ControlConfig.h.");
@@ -1187,6 +1273,129 @@ void RobotApp::dienTrangThaiWeb(ThongTinTrangThaiWeb& trangThaiRa) {
                   dangMo ? "PID_MO" : "PID_THUAN");
 }
 
+void RobotApp::guiChanDoanEspNow() {
+    if (!lienKetChanDoan.enabled()) return;
+    static uint64_t lanGui_us = 0;
+    const uint64_t now = nowUs();
+    if (now - lanGui_us < 20000) return;
+    lanGui_us = now;
+    ControlStatus c{}; MotorStatus m{};
+    if (xQueuePeek(_hangDoiTrangThaiDieuKhien, &c, 0) != pdTRUE ||
+        xQueuePeek(_hangDoiTrangThaiDongCo, &m, 0) != pdTRUE) return;
+    ChanDoanEspNow::GoiTelemetry t{};
+    t.t_us = c.khungCamBien.thoiDiemLayMau_us; t.motor_us = m.thoiDiemSnapshot_us;
+    t.sample_seq = c.khungCamBien.soMauLayDuoc; t.control_seq = c.soThuTuLenh; t.cfg = c.phienBanCauHinh;
+    t.control_session = c.maPhien; t.motor_session = m.maPhien;
+    t.en = m.trangThaiBoDieuKhienDongCo.daBat; t.mode = c.dungPidMo;
+    t.control_fault = static_cast<uint8_t>(c.loi); t.motor_fault = static_cast<uint8_t>(m.loi);
+    t.control_phase = static_cast<uint8_t>(c.phaDieuKhien); t.motor_phase = static_cast<uint8_t>(m.cheDo);
+    t.angle_valid = c.trangThaiXe.gocHopLe && c.trangThaiXe.thoiDiemGoc_us &&
+        now >= c.trangThaiXe.thoiDiemGoc_us && now-c.trangThaiXe.thoiDiemGoc_us < tuoiImuToiDa_us;
+    t.feedback = static_cast<uint8_t>(c.trangThaiXe.nguonQuangDuong);
+    t.theta = c.trangThaiXe.gocNghien_rad; t.rate = c.trangThaiXe.tocDoNghien_radps;
+    t.target = c.gocDat_rad; t.eq = c.gocCanBang_rad; t.v = c.trangThaiXe.vanTocDoc_mps;
+    t.vref = c.vanTocMucTieu_mps; t.yawref = c.tocDoQuayMucTieu_radps;
+    t.cmd_l = c.lenhBanh.tocDoBuocTrai_buocTrenGiay; t.cmd_r = c.lenhBanh.tocDoBuocPhai_buocTrenGiay;
+    t.a_cmd = c.giaTocLenh_mps2; t.gyro_d = c.gyroDaLoc_radps;
+    t.acc_norm = c.trangThaiXe.doLonGiaToc_mps2; t.innov = c.trangThaiXe.saiLechGiaToc_rad;
+    t.trust = c.trangThaiXe.doTinCayGiaToc;
+    t.kp = c.heSoPid.heSoTiLe; t.ki = c.heSoPid.heSoTichPhan; t.kd = c.heSoPid.heSoViPhan;
+    t.steps_l = m.khungXung.trai; t.steps_r = m.khungXung.phai;
+    t.enc_l = m.khungXung.encoderTrai; t.enc_r = m.khungXung.encoderPhai;
+    const auto age = [now](uint64_t at) -> uint32_t {
+        if (!at || at > now || now-at >= UINT32_MAX) return UINT32_MAX;
+        return static_cast<uint32_t>(now-at);
+    };
+    t.uart_age_l_us = age(m.khungXung.thoiDiemNhanUartTrai_us);
+    t.uart_age_r_us = age(m.khungXung.thoiDiemNhanUartPhai_us);
+    t.uart_rx_l = m.khungXung.soKhungUartTrai; t.uart_rx_r = m.khungXung.soKhungUartPhai;
+    t.imu_miss = static_cast<uint32_t>(std::min<uint64_t>(c.soMauBoLo, UINT32_MAX));
+    t.imu_i2c = c.khungCamBien.chanDoan.soLoiI2c; t.imu_late = c.khungCamBien.chanDoan.soLanDocQuaChuKy;
+    lienKetChanDoan.sendTelemetry(t);
+}
+
+void RobotApp::ghiMauNghienCuu() {
+    _nhatKyNghienCuu.phat(Serial);
+    if (!_batNghienCuu) {
+        if (!_nhatKyNghienCuu.conDuLieu()) {
+            _dangPhatNghienCuu = false;
+#if ARDUINO_USB_CDC_ON_BOOT
+            // Khôi phục timeout mặc định của Arduino USBCDC / HWCDC.
+#if ARDUINO_USB_MODE
+            Serial.setTxTimeoutMs(100);
+#else
+            Serial.setTxTimeoutMs(250);
+#endif
+#endif
+        }
+        return;
+    }
+    constexpr uint64_t chuKy_us = 20000; // 50 Hz, giữ lưới thời gian khi loop bị trễ.
+    const uint64_t lucHen_us = nowUs();
+    if (lucHen_us < _henMauNghienCuu_us) return;
+    const uint64_t soKyTre = (lucHen_us - _henMauNghienCuu_us) / chuKy_us;
+    _soMauNghienCuuBo += static_cast<uint32_t>(soKyTre);
+    _henMauNghienCuu_us += (soKyTre + 1u) * chuKy_us;
+    if (_nhatKyNghienCuu.conDuLieu()) {
+        ++_soMauNghienCuuBo;
+        return;
+    }
+    if (_canTieuDeNghienCuu) {
+        static constexpr char tieuDe[] =
+            "NC_HEADER,t_us,seq,cseq,cfg,csess,cphase,mode,cfault,valid,m_us,msess,mphase,en,mfault,"
+            "theta,rate,target,eq,e,v,vref,yawref,cmdL,cmdR,kp,ki,kd,miss,age_us,drop,i2c,late,a_cmd,feedback\n";
+        _nhatKyNghienCuu.them(tieuDe, sizeof(tieuDe) - 1);
+        _canTieuDeNghienCuu = false;
+    }
+    ControlStatus c{};
+    MotorStatus m{};
+    if (xQueuePeek(_hangDoiTrangThaiDieuKhien, &c, 0) != pdTRUE ||
+        xQueuePeek(_hangDoiTrangThaiDongCo, &m, 0) != pdTRUE || c.soThuTuLenh == _thuTuDaGhi) {
+        ++_soMauNghienCuuBo;
+        return;
+    }
+
+    // Mọi hệ số/đích thuộc đúng mẫu điều khiển. Cột m_* là snapshot motor riêng.
+    char dong[448];
+    const auto ghiDong = [&](int doDai) {
+        return doDai > 0 && static_cast<size_t>(doDai) < sizeof(dong) &&
+               _nhatKyNghienCuu.them(dong, static_cast<size_t>(doDai));
+    };
+    if (_canCauHinhNghienCuu || c.phienBanCauHinh != _phienBanDaGhi || c.dungPidMo != _cheDoMoDaGhi) {
+        const int doDai = std::snprintf(dong, sizeof(dong), "NC_CFG,%lu,%d,%.7g,%.7g,%.7g,%.7g,%.7g,%d,%d\n",
+            static_cast<unsigned long>(c.phienBanCauHinh), c.dungPidMo,
+            c.heSoGocCoSo.heSoTiLe, c.heSoGocCoSo.heSoTichPhan, c.heSoGocCoSo.heSoViPhan,
+            c.kpVanTocCoSo, c.kiVanTocCoSo, c.bench, c.vongNgoai);
+        if (!ghiDong(doDai)) { ++_soMauNghienCuuBo; return; }
+        _canCauHinhNghienCuu = false;
+        _phienBanDaGhi = c.phienBanCauHinh;
+        _cheDoMoDaGhi = c.dungPidMo;
+    }
+    const auto& xe = c.trangThaiXe;
+    const auto& imu = c.khungCamBien;
+    const uint64_t lucLay_us = nowUs();
+    const long long tuoi_us = xe.thoiDiemGoc_us && lucLay_us >= xe.thoiDiemGoc_us
+        ? static_cast<long long>(lucLay_us - xe.thoiDiemGoc_us) : -1;
+    const int doDai = std::snprintf(dong, sizeof(dong),
+        "NC,%llu,%lu,%lu,%lu,%lu,%u,%d,%u,%d,%llu,%lu,%u,%d,%u,"
+        "%.7g,%.7g,%.7g,%.7g,%.7g,%.6g,%.6g,%.6g,%.7g,%.7g,%.6g,%.6g,%.6g,%llu,%lld,%lu,%lu,%lu,%.7g,%u\n",
+        static_cast<unsigned long long>(imu.thoiDiemLayMau_us), static_cast<unsigned long>(imu.soMauLayDuoc),
+        static_cast<unsigned long>(c.soThuTuLenh), static_cast<unsigned long>(c.phienBanCauHinh),
+        static_cast<unsigned long>(c.maPhien), static_cast<unsigned>(c.phaDieuKhien), c.dungPidMo,
+        static_cast<unsigned>(c.loi), xe.gocHopLe && tuoi_us >= 0 && tuoi_us < tuoiImuToiDa_us,
+        static_cast<unsigned long long>(m.thoiDiemSnapshot_us), static_cast<unsigned long>(m.maPhien),
+        static_cast<unsigned>(m.cheDo), m.trangThaiBoDieuKhienDongCo.daBat, static_cast<unsigned>(m.loi),
+        xe.gocNghien_rad, xe.tocDoNghien_radps, c.gocDat_rad, c.gocCanBang_rad, xe.gocNghien_rad - c.gocDat_rad,
+        xe.vanTocDoc_mps, c.vanTocMucTieu_mps, c.tocDoQuayMucTieu_radps,
+        c.lenhBanh.tocDoBuocTrai_buocTrenGiay, c.lenhBanh.tocDoBuocPhai_buocTrenGiay,
+        c.heSoPid.heSoTiLe, c.heSoPid.heSoTichPhan, c.heSoPid.heSoViPhan,
+        static_cast<unsigned long long>(c.soMauBoLo), tuoi_us, static_cast<unsigned long>(_soMauNghienCuuBo),
+        static_cast<unsigned long>(imu.chanDoan.soLoiI2c), static_cast<unsigned long>(imu.chanDoan.soLanDocQuaChuKy),
+        c.giaTocLenh_mps2, static_cast<unsigned>(xe.nguonQuangDuong));
+    if (ghiDong(doDai)) _thuTuDaGhi = c.soThuTuLenh;
+    else ++_soMauNghienCuuBo;
+}
+
 void RobotApp::loop() {
     if (!_daSanSang) {
         static uint32_t lanBaoLoiBoot_ms = 0;
@@ -1260,6 +1469,8 @@ void RobotApp::loop() {
     }
 
     dieuKhienKhongDay.xuLy();
+    guiChanDoanEspNow();
+    if (_dangPhatNghienCuu) ghiMauNghienCuu();
 
     if (_canLuuNvs) {
         MotorStatus trangThaiDongCoNvs{};
@@ -1300,7 +1511,7 @@ void RobotApp::loop() {
             else denTrangThai.baoSanSang();
         }
         if (_inDuLieuImu && baoCaoDongCo.cheDo != CheDoCanBang::Tat) _inDuLieuImu = false;
-        if (_inDuLieuImu && gocConMoi && baoCaoDieuKhien.khungCamBien.trangThai == TrangThaiKhungDuLieuImu::HopLe) {
+        if (!_dangPhatNghienCuu && _inDuLieuImu && gocConMoi && baoCaoDieuKhien.khungCamBien.trangThai == TrangThaiKhungDuLieuImu::HopLe) {
             const auto& mau = baoCaoDieuKhien.khungCamBien;
             // Gia tốc còn chứa trọng lực; gyro đã trừ bias. Tất cả vẫn ở hệ sensor.
             Serial.printf("RAW_IMU,%llu,%.7f,%.7f,%.7f,%.7f,%.7f,%.7f\n",
@@ -1328,7 +1539,7 @@ void RobotApp::loop() {
                 static_cast<unsigned long>(baoCaoDongCo.khungXung.soKhungUartPhai),
                 static_cast<long long>(baoCaoDongCo.khungXung.encoderPhai));
         }
-        if (!_batTelemetry) {
+        if (!_batTelemetry || _dangPhatNghienCuu) {
             delay(1);
             return;
         }

@@ -1,0 +1,15 @@
+{
+  "completed": false,
+  "errors": [
+    "Số cột telemetry không khớp BN_HEADER",
+    "Kết thúc: Số cột telemetry không khớp BN_HEADER"
+  ],
+  "rows": 0,
+  "arm_requested": true,
+  "pulse_v_mps": 0,
+  "pulse_seconds": 0.3,
+  "disarm_at_normal_end_requested": true,
+  "last_sample": null,
+  "motor_off_confirmed": null,
+  "note": "STOP giữ cân bằng với lệnh v/yaw=0; DISARM chỉ ở cuối phiên hoàn tất bình thường khi đã chọn. Các lỗi ACK radio được ghi nhưng không tự DISARM. Không có xác nhận vị trí tuyệt đối trên sàn."
+}

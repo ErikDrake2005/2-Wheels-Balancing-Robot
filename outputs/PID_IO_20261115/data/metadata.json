@@ -1,0 +1,72 @@
+{
+  "format_version": 1,
+  "created_utc": "2026-11-15T15:46:27.905346+00:00",
+  "source_folder": "D:\\DATA\\Code\\2WheelsBalacingRobot\\outputs\\PID_IO_20261115\\raw",
+  "source_files": {
+    "metadata.json": {
+      "path": "D:\\DATA\\Code\\2WheelsBalacingRobot\\outputs\\PID_IO_20261115\\raw\\metadata.json",
+      "sha256": "d6c37c82e7d47c7dae702b0afff5b9bee22aa0008bedf5267d6bfbb4ee7cc80b",
+      "bytes": 3044
+    },
+    "samples.csv": {
+      "path": "D:\\DATA\\Code\\2WheelsBalacingRobot\\outputs\\PID_IO_20261115\\raw\\samples.csv",
+      "sha256": "b12b80aa8da13538a4eb06ed5ec5302d40b34b3775db5513f5ab8cc1c4596c11",
+      "bytes": 932147
+    },
+    "serial.raw.log": {
+      "path": "D:\\DATA\\Code\\2WheelsBalacingRobot\\outputs\\PID_IO_20261115\\raw\\serial.raw.log",
+      "sha256": "58e5e3c97dc8ce967a07bb14483e17a8a0772438e931623b90bb0801ef7a6b7e",
+      "bytes": 599139
+    },
+    "events.csv": {
+      "path": "D:\\DATA\\Code\\2WheelsBalacingRobot\\outputs\\PID_IO_20261115\\raw\\events.csv",
+      "sha256": "a6edcca9e0452efd8805f4720595d8174a92cc10c74f966448b477748f4614c3",
+      "bytes": 4600
+    }
+  },
+  "purpose": "io_dataset",
+  "controller": "PID_THUAN",
+  "condition": "floor-unheld",
+  "condition_source": "operator-declared",
+  "selection": "all rows with phase=measure, in original order",
+  "rows": 3001,
+  "duration_s": 59.998155,
+  "effective_sample_rate_hz": 50.00153754727958,
+  "nominal_sample_rate_hz": 50,
+  "base_configuration": {
+    "cfg": 22,
+    "mode": 0,
+    "kp0": 33.0,
+    "ki0": 0.0,
+    "kd0": 3.3,
+    "kpv0": 0.15,
+    "kiv0": 0.06,
+    "bench": 0,
+    "vloop": 1
+  },
+  "csv_file": "data_pid_io.csv",
+  "csv_sha256": "2f8d0c672425f5d011313cd3a53da5ac6aed3423069a69b3f4cd8dd4357d3ed8",
+  "simulation_csv_file": "pid_u_y.csv",
+  "simulation_csv_sha256": "2c6cdbb51b265a1ae4a9dcab256274cbf55a77d42b353232f9c0b23b1b87cc0a",
+  "column_definitions": {
+    "t_s": "Source IMU time rebased to zero at the first exported measure row [s].",
+    "imu_source_us": "Firmware IMU source timestamp [us].",
+    "motor_snapshot_us": "Timestamp of the separately sampled motor state [us].",
+    "u_left_steps_per_s": "Left wheel STEP frequency command, signed [STEP/s].",
+    "u_right_steps_per_s": "Right wheel STEP frequency command, signed [STEP/s].",
+    "u_common_steps_per_s": "(u_left + u_right) / 2 [STEP/s].",
+    "u_diff_steps_per_s": "(u_right - u_left) / 2 [STEP/s].",
+    "a_cmd_mps2": "Longitudinal acceleration command after speed limit, before individual wheel correction [m/s^2].",
+    "y_pitch_rad": "IMU estimator pitch output [rad].",
+    "e_rad": "y_pitch_rad - target_pitch_rad [rad].",
+    "feedback_id": "1=STEP pulse estimate, 2=wheel encoder.",
+    "mode_id": "0=PID_THUAN."
+  },
+  "remarks": [
+    "Closed-loop balance measurements with the fixed PID configuration recorded in NC_CFG.",
+    "u_* and a_cmd are commanded quantities. Actual wheel acceleration is not measured by these columns.",
+    "Pitch is an IMU estimate. estimated_v_mps uses the source identified by feedback_id.",
+    "Controller data and motor-state data have separate timestamps.",
+    "Original timestamps and row order are preserved. No resampling or interpolation is applied."
+  ]
+}

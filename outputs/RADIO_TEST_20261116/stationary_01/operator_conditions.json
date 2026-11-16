@@ -1,0 +1,7 @@
+{
+  "result": "aborted early; not a balance performance trial",
+  "termination": "Host counter guard reacted to one robot MAC TX failure while bridge sequence loss was zero; STOP and DISARM sent.",
+  "motor_off_confirmed": true,
+  "user_report": "User caught/held robot at about 45 degrees after early stop.",
+  "host_fix": "Radio counters are quality data; early errors now STOP/hold, DISARM only on normal requested end."
+}

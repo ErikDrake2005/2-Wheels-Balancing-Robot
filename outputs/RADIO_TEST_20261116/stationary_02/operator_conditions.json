@@ -1,0 +1,6 @@
+{
+  "result": "No ARM sent; preheader USB tail caused reader to exit before first accepted telemetry row",
+  "motor_off_observed_in_raw": true,
+  "excluded_from_balance_analysis": true,
+  "fix": "Ignore preheader data; bridge clears stale pending row on connect; require three fresh stable preflight samples"
+}

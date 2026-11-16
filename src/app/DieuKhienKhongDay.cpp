@@ -211,9 +211,9 @@ body{margin:0;padding:10px;font-family:system-ui,-apple-system,Segoe UI,Roboto,s
     </div>
     <div class="tieuDe" style="margin-bottom:4px">
       <span>2 JOYSTICK &amp; LENH NHI PHAN 8B</span>
-      <span id="oPhanTramTocDo" style="font-size:12px;color:#58a6ff">75%</span>
+      <span id="oPhanTramTocDo" style="font-size:12px;color:#58a6ff">100%</span>
     </div>
-    <input id="thanhTocDo" class="thanhTruot" type="range" min="25" max="100" step="5" value="75" style="margin-bottom:6px">
+    <input id="thanhTocDo" class="thanhTruot" type="range" min="25" max="100" step="5" value="100" style="margin-bottom:6px">
     <div class="khuHaiCanGat">
       <div class="hopCanGat">
         <div class="tieuDeCanGat">
@@ -347,7 +347,7 @@ body{margin:0;padding:10px;font-family:system-ui,-apple-system,Segoe UI,Roboto,s
 </div>
 
 <script>
-const vanTocToiDaXe = 0.20;
+const vanTocToiDaXe = 0.40;
 const tocDoQuayToiDaXe = 0.80;
 const congWebSocket = 81;
 const chuKyGuiNhiPhan = 30;
@@ -363,7 +363,7 @@ let maConTroReNgang = null;
 let boDemGuiLienTuc = null;
 let mocGuiWsGanNhat = 0;
 let mocGuiHttpGanNhat = 0;
-let heSoTocDoDiaHinh = 0.75;
+let heSoTocDoDiaHinh = 1.0;
 let daDienThongSoBanDau = false;
 let cheDoTruoc = '';
 let ketNoiWs = null;
@@ -434,8 +434,8 @@ function capNhatTrangThaiKetNoi(daKetNoi, doTreMs) {
 function noiSuyTangTocKeo(giaTriKeo) {
   const giaTriKep = Math.max(-1, Math.min(1, giaTriKeo));
   const doLonTho = Math.abs(giaTriKep);
-  const vungChet = 0.06;
-  const heSoCong = 0.35;
+  const vungChet = 0.04;
+  const heSoCong = 0.15;
   if (doLonTho <= vungChet) return 0;
   const tyLe = (doLonTho - vungChet) / (1 - vungChet);
   const doLon = (1 - heSoCong) * tyLe + heSoCong * tyLe * tyLe;
@@ -890,11 +890,12 @@ DieuKhienKhongDay* DieuKhienKhongDay::doiTuongHienTai = nullptr;
 bool DieuKhienKhongDay::khoiTao(HamNhanDiChuyen hamDiChuyenMoi,
                                 HamNhanPhimLenh hamPhimMoi,
                                 HamNhanDongLenh hamDongMoi,
-                                HamLayTrangThai hamTrangThaiMoi) {
+                                HamLayTrangThai hamTrangThaiMoi, HamNhanChanDoan hamChanDoanMoi) {
     hamDiChuyen = hamDiChuyenMoi;
     hamPhimLenh = hamPhimMoi;
     hamDongLenh = hamDongMoi;
     hamLayTrangThai = hamTrangThaiMoi;
+    hamNhanChanDoan = hamChanDoanMoi;
     doiTuongHienTai = this;
 
     if (!batDieuKhienWifi && !batThuEspNow) return true;
@@ -932,15 +933,18 @@ bool DieuKhienKhongDay::khoiTao(HamNhanDiChuyen hamDiChuyenMoi,
         esp_wifi_set_channel(kenhWifiAp, WIFI_SECOND_CHAN_NONE);
         if (esp_now_init() == ESP_OK &&
             esp_now_register_recv_cb(
-                reinterpret_cast<esp_now_recv_cb_t>(khiNhanDuLieuEspNow)) == ESP_OK) {
+                khiNhanDuLieuEspNow) == ESP_OK) {
             daBatEspNow = true;
         }
     }
     return (!batDieuKhienWifi || daBatWifi) && (!batThuEspNow || daBatEspNow);
 }
 
-void DieuKhienKhongDay::khiNhanDuLieuEspNow(const void*, const uint8_t* duLieu, int doDaiDuLieu) {
+void DieuKhienKhongDay::khiNhanDuLieuEspNow(const esp_now_recv_info_t* thongTinNhan, const uint8_t* duLieu, int doDaiDuLieu) {
     if (!doiTuongHienTai || !duLieu || doDaiDuLieu <= 0) return;
+    const auto* info = static_cast<const esp_now_recv_info_t*>(thongTinNhan);
+    if (info && doiTuongHienTai->hamNhanChanDoan &&
+        doiTuongHienTai->hamNhanChanDoan(info->src_addr, duLieu, static_cast<size_t>(doDaiDuLieu))) return;
     doiTuongHienTai->dayDuLieuEspNow(duLieu, doDaiDuLieu);
 }
 

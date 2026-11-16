@@ -1,0 +1,33 @@
+{
+  "active_rows": 470,
+  "active_span_s": 10.021607,
+  "measure_rows_after_3s": 329,
+  "rmse_error_deg": 0.2861980538498449,
+  "max_error_deg": 0.6517008746059196,
+  "rms_rate_rad_s": 0.08606965138718983,
+  "eq_deg": 0.10158455764000225,
+  "pid_sets": [
+    [
+      "33",
+      "0",
+      "3.3"
+    ]
+  ],
+  "boot_ids": [
+    "756890956"
+  ],
+  "rssi_dbm": [
+    -77,
+    -64
+  ],
+  "counter_delta": {
+    "bridge_missed_radio": 0,
+    "robot_tx_fail": 0,
+    "robot_tx_drop": 0,
+    "usb_dropped": 0,
+    "imu_miss": 0,
+    "imu_i2c": 0,
+    "imu_late": 0
+  },
+  "motor_off_confirmed": true
+}

@@ -3,7 +3,7 @@
 
 #include <cstdint>
 constexpr uint32_t tuoiImuToiDa_us = 20000;
-// Tuổi snapshot xung tại lúc kiểm tra (MotorTask cập nhật mỗi 1 ms).
+// Tuổi snapshot xung tại lúc kiểm tra (mục tiêu MKS 0,5 ms; TMC_MT 1 ms).
 constexpr uint32_t tuoiXungToiDa_us = 20000;
 // Chặt khi BẬT: lệnh 0 xác nhận phiên phải thật mới.
 constexpr uint32_t tuoiLenhDeBat_us = 10000;
