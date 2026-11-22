@@ -14,7 +14,8 @@ bool MksServo42CPair::begin() {
     if (_daKhoiTao) return false;
     if (!std::isfinite(tanSoStepToiDa_hz) || tanSoStepToiDa_hz <= 0.0f ||
         !std::isfinite(tanSoChayLienTucToiThieu_hz) || tanSoChayLienTucToiThieu_hz <= 0.0f ||
-        tanSoChayLienTucToiThieu_hz > tanSoStepToiDa_hz ||
+        !std::isfinite(tanSoVaoChayLienTuc_hz) || tanSoVaoChayLienTuc_hz < tanSoChayLienTucToiThieu_hz ||
+        tanSoVaoChayLienTuc_hz > tanSoStepToiDa_hz ||
         chuKyPhucVuMotor_us == 0 || thoiGianHetHanLenhMotor_us == 0 ||
         !std::isfinite(gioiHanTonDongXungThua_buoc) || gioiHanTonDongXungThua_buoc <= 1.0 ||
         khoangCachPhucVuMotorToiDa_us < chuKyPhucVuMotor_us ||
@@ -49,8 +50,10 @@ bool MksServo42CPair::begin() {
         return false; // Không bật EN; reset sau khi sửa nguyên nhân.
     }
     if (!_banhTrai.step.supportsFrequency(tanSoChayLienTucToiThieu_hz) ||
+        !_banhTrai.step.supportsFrequency(tanSoVaoChayLienTuc_hz) ||
         !_banhTrai.step.supportsFrequency(tanSoStepToiDa_hz) ||
         !_banhPhai.step.supportsFrequency(tanSoChayLienTucToiThieu_hz) ||
+        !_banhPhai.step.supportsFrequency(tanSoVaoChayLienTuc_hz) ||
         !_banhPhai.step.supportsFrequency(tanSoStepToiDa_hz)) {
         _banhTrai.step.stop(); _banhPhai.step.stop();
         return false;
@@ -150,7 +153,9 @@ bool MksServo42CPair::writeDirection(Axis& a, bool dangTien) {
 bool MksServo42CPair::advance(Axis& a, double dtSeconds, uint64_t now) {
     const float hz = std::fabs(a.tocDoMucTieu);
     const bool desiredForward = a.tocDoMucTieu >= 0.0f;
-    const Mode desiredMode = hz >= tanSoChayLienTucToiThieu_hz ? Mode::Continuous : Mode::Sparse;
+    const Mode desiredMode = (a.cheDo == Mode::Continuous)
+        ? (hz >= tanSoChayLienTucToiThieu_hz ? Mode::Continuous : Mode::Sparse)
+        : (hz >= tanSoVaoChayLienTuc_hz ? Mode::Continuous : Mode::Sparse);
 
     if (a.giaiDoan == Phase::Running && a.cheDo == Mode::Sparse &&
         desiredMode == Mode::Continuous && desiredForward == a.dangTien &&

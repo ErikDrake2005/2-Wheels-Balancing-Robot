@@ -1,5 +1,6 @@
 #include "HieuChuanNghiengDoc.h"
 #include "config/CalibConfig.h"
+#include "config/ImuConfig.h"
 #include <algorithm>
 #include <initializer_list>
 
@@ -30,7 +31,7 @@ bool HieuChuanNghiengDoc::tinhMaTran(const Vec3Imu& giaTocDung, const Vec3Imu& g
         return dat;
     };
     for (const auto* giaToc : {&giaTocDung, &giaTocTruoc, &giaTocSau}) {
-        if (!vectoHuuHan(*giaToc) || std::fabs(doLonVecto(*giaToc) - 9.80665f) > 0.5f)
+        if (!vectoHuuHan(*giaToc) || std::fabs(doLonVecto(*giaToc) - 9.80665f) > saiLechNormGiaTocCalib_mps2)
             return ketThuc("gia_toc_moc_khong_hop_le");
     }
     if (_soMau < 40 || doLonVecto(_tongGoc) < 2.5f) return ketThuc("luot_quay_qua_ngan");

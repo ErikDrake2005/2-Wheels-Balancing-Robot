@@ -1,6 +1,14 @@
 #ifndef IMUCONFIG_H
 #define IMUCONFIG_H
 #include <cstdint>
+#include "ImuProfile.h"
+#include "Lsm6dsvTuning.h"
+#include "Mpu6050Tuning.h"
+#if CAU_HINH_IMU == IMU_LSM6DSV_SPI
+#include "Lsm6dsvConfig.h"
+#elif CAU_HINH_IMU == IMU_MPU6050_I2C
+#include "Mpu6050Config.h"
+#endif
 // ICM20602 đọc raw accel/gyro + DLPF phần cứng; fusion thực hiện trên ESP32, không DMP.
 // Các macro Mpu là cấu hình tương thích bench cũ; runtime dùng các tên Icm bên dưới.
 #define diaChiI2cMpu 0x68
@@ -15,6 +23,24 @@
 #define batNgatMpu true
 #define mucNgatMpuCao true // true: active HIGH; false: active LOW
 #define soMauHieuChinhMpu 500
+#if CAU_HINH_IMU == IMU_LSM6DSV_SPI
+constexpr uint32_t tanSoLayMauImu_hz = lsm6dsv::tanSoLayMau_hz;
+constexpr uint32_t tanSoBusImu_hz = lsm6dsv::tanSoSpi_hz;
+constexpr bool ngatImuCao = lsm6dsv::mucNgatCao;
+constexpr bool dungNgatImu = true;
+#elif CAU_HINH_IMU == IMU_MPU6050_I2C
+constexpr uint32_t tanSoLayMauImu_hz = mpu6050::tanSoLayMau_hz;
+constexpr uint32_t tanSoBusImu_hz = mpu6050::tanSoI2c_hz;
+constexpr bool ngatImuCao = true;
+constexpr bool dungNgatImu = false; // INT để trống: đọc đồng bộ theo cờ DATA_RDY_INT (0x3A).
+#else
+constexpr uint32_t tanSoLayMauImu_hz = tanSoLayMauMpu_hz;
+constexpr uint32_t tanSoBusImu_hz = tanSoI2cMpu_hz;
+constexpr bool ngatImuCao = mucNgatMpuCao;
+constexpr bool dungNgatImu = batNgatMpu;
+#endif
+constexpr uint8_t maNhanDangImuDuKien =
+    dungLsm6dsv ? 0x70 : (dungMpu6050 ? 0x68 : 0x12);
 constexpr uint8_t diaChiI2cIcm = diaChiI2cMpu;
 constexpr uint32_t tanSoI2cIcm_hz = tanSoI2cMpu_hz;
 constexpr uint32_t tanSoLayMauIcm_hz = tanSoLayMauMpu_hz;
@@ -31,7 +57,7 @@ constexpr uint32_t thoiGianChoOnDinhCalib_ms = 30000;
 constexpr uint32_t thoiGianLangSauNhanNut_ms = 500;
 constexpr uint32_t thoiGianMatMauCalib_ms = 500;
 constexpr uint32_t khoangMauCalibToiDa_ms = 50;
-constexpr float saiLechNormGiaTocCalib_mps2 = 0.5f;
+constexpr float saiLechNormGiaTocCalib_mps2 = dungLsm6dsv ? 0.85f : 0.5f;
 constexpr float phuongSaiGiaTocCalibToiDa = 0.04f; // Tổng phương sai XYZ, (m/s²)².
 constexpr float tocDoGyroTinhCalibToiDa_radps = 0.10f; // Sau trừ bias (~5.7 dps).
 constexpr float gioiHanGyroThoCalib_dps = 10.0f; // Trước trừ bias; không chứng minh đứng yên.
@@ -48,12 +74,22 @@ constexpr uint32_t thoiGianKhoiDongMpu_ms = 100;
 constexpr uint32_t duPhongThoiGianHieuChinh_ms = 1000;
 constexpr uint8_t locGiaTocIcm = 3; // ICM20602 accel BW 44,8 Hz tại fs đọc 200 Hz.
 // Hướng lắp nay dùng phép quay 3D trong ImuMountConfig.h, không chọn riêng X/Y.
+#if CAU_HINH_IMU == IMU_LSM6DSV_SPI
+constexpr float hangSoThoiGianLocGoc_s = lsm6dsvTune::locGoc_s;
+#elif CAU_HINH_IMU == IMU_MPU6050_I2C
+constexpr float hangSoThoiGianLocGoc_s = mpu6050Tune::locGoc_s;
+#else
 constexpr float hangSoThoiGianLocGoc_s = 0.4f;
-constexpr float saiLechGiaTocChoPhep_mps2 = 2.5f;
+#endif
+constexpr float saiLechGiaTocChoPhep_mps2 =
+    dungLsm6dsv ? lsm6dsvTune::saiLechGiaToc_mps2 : (dungMpu6050 ? mpu6050Tune::saiLechGiaToc_mps2 : 2.5f);
 // Giảm tin gia tốc khi góc accel khác nhiều dự đoán gyro (gia tốc tịnh tiến).
-constexpr float saiLechGocBatDauGiamTin_rad = 0.08f;
-constexpr float saiLechGocMatTin_rad = 0.25f;
-constexpr float thoiGianMatTinGiaTocToiDa_s = 0.5f;
+constexpr float saiLechGocBatDauGiamTin_rad =
+    dungLsm6dsv ? lsm6dsvTune::giamTinGoc_rad : (dungMpu6050 ? mpu6050Tune::giamTinGoc_rad : 0.08f);
+constexpr float saiLechGocMatTin_rad =
+    dungLsm6dsv ? lsm6dsvTune::matTinGoc_rad : (dungMpu6050 ? mpu6050Tune::matTinGoc_rad : 0.25f);
+constexpr float thoiGianMatTinGiaTocToiDa_s =
+    dungLsm6dsv ? lsm6dsvTune::matTin_s : (dungMpu6050 ? mpu6050Tune::matTin_s : 0.5f);
 static_assert(saiLechGocMatTin_rad > saiLechGocBatDauGiamTin_rad &&
               thoiGianMatTinGiaTocToiDa_s > 0, "Mien tin cay gia toc khong hop le");
 static_assert(tanSoLayMauMpu_hz > 0 && tanSoLayMauMpu_hz <= 1000 &&

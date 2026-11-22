@@ -1,9 +1,18 @@
 #include "HeTrucImu.h"
 #include "config/ImuMountConfig.h"
 #include <limits>
+#include "config/ImuProfile.h"
+#include "config/Lsm6dsvTuning.h"
+#include "config/Mpu6050Tuning.h"
 
 HeTrucImu::HeTrucImu() {
-    if (dungMaTranLapImu) {
+    if (dungLsm6dsv) {
+        for (unsigned hang=0;hang<3;++hang) for(unsigned cot=0;cot<3;++cot)
+            _maTran.phanTu[hang][cot]=lsm6dsvTune::maTranLap[hang][cot];
+    } else if (dungMpu6050) {
+        for (unsigned hang=0;hang<3;++hang) for(unsigned cot=0;cot<3;++cot)
+            _maTran.phanTu[hang][cot]=mpu6050Tune::maTranLap[hang][cot];
+    } else if (dungMaTranLapImu) {
         for (unsigned hang=0;hang<3;++hang) for(unsigned cot=0;cot<3;++cot)
             _maTran.phanTu[hang][cot]=maTranCamBienSangXe[hang][cot];
     } else _maTran=tuGocLap_deg(gocLapRoll_deg,gocLapPitch_deg,gocLapYaw_deg);
@@ -43,6 +52,19 @@ Vec3Imu HeTrucImu::chuyenSangXe(const Vec3Imu& vectoCamBien) const {
     ketQua.z=_maTran.phanTu[2][0]*vectoCamBien.x+_maTran.phanTu[2][1]*vectoCamBien.y+_maTran.phanTu[2][2]*vectoCamBien.z;
     return ketQua;
 }
+bool HeTrucImu::tuTuTheDung(const Vec3Imu& giaTocDung, Vec3Imu tien, MaTranQuayImu& ketQua) {
+    Vec3Imu len = giaTocDung;
+    if (!chuanHoaVecto(len) || !chuanHoaVecto(tien)) return false;
+    Vec3Imu trai = tichCoHuong(len, tien);
+    // Hướng tiến đã khai báo phải có hình chiếu ngang đủ lớn để xác định hướng bánh.
+    if (doLonVecto(trai) < 0.5f || !chuanHoaVecto(trai)) return false;
+    tien = tichCoHuong(trai, len);
+    const MaTranQuayImu r = {{{tien.x, tien.y, tien.z}, {trai.x, trai.y, trai.z}, {len.x, len.y, len.z}}};
+    if (!kiemTraMaTran(r)) return false;
+    ketQua = r;
+    return true;
+}
+
 bool HeTrucImu::tuHaiVector(const Vec3Imu& giaTocDung,const Vec3Imu& gyroNghiengTien,
                           MaTranQuayImu& ketQua) {
     const float normGiaToc=doLonVecto(giaTocDung),normGyro=doLonVecto(gyroNghiengTien);

@@ -43,7 +43,7 @@ void frameIntegrity() {
         }
     }
     GoiHello bad = hello;
-    bad.h.version = 2; reseal(bad);
+    bad.h.version = version+1; reseal(bad);
     check(!decode(bad, out), "unknown version rejected even with correct CRC");
     bad = hello; bad.h.length = 1; reseal(bad);
     check(!decode(bad, out), "embedded size must agree with payload");
@@ -147,7 +147,7 @@ void telemetry() {
     packet.rate = 0.67f;
     packet.tx_fail = 9;
     dongGoi(packet, 42, 300);
-    check(sizeof(packet) == 223 && sizeof(packet) <= 250, "telemetry fits ESP-NOW v1 frame");
+    check(sizeof(packet) == 224 && sizeof(packet) <= 250, "telemetry fits ESP-NOW v1 frame");
     check(decode(packet, out) && out.t_us == packet.t_us && out.motor_us == packet.motor_us,
           "independent source clocks survive transmission");
     check(out.steps_l == packet.steps_l && out.steps_r == packet.steps_r &&
@@ -159,6 +159,11 @@ void telemetry() {
     check(out.uart_age_l_us == UINT32_MAX, "no encoder sample uses explicit unknown age");
     out.boot_id = 77; out.motor_us = 12345; out.t_us = 12000;
     check(telemetryHopLe(out), "finite bounded telemetry accepted semantically");
+    out.diag_flags=7;
+    check(telemetryHopLe(out), "recorded A/B switches accepted");
+    out.diag_flags=8;
+    check(!telemetryHopLe(out), "unknown A/B flags rejected");
+    out.diag_flags=0;
     out.theta = std::numeric_limits<float>::quiet_NaN();
     check(!telemetryHopLe(out), "valid CRC does not make NaN telemetry usable");
     out.theta = 0; out.angle_valid = 2;

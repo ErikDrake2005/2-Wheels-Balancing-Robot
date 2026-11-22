@@ -1,0 +1,25 @@
+{
+  "diag_flags": 6,
+  "vref_span_s": 0.559582,
+  "vref_area_m": 0.0496261943668,
+  "motion_window_source_seconds": [
+    -0.5,
+    2.0
+  ],
+  "angle_error_rms_deg": 0.5599662160031016,
+  "max_abs_angle_deg": 2.4962355928095996,
+  "rate_rms_rad_s": 0.1434489260487782,
+  "pcnt_v_peak_mps": 0.025452,
+  "enc_relative_peak_5samples_mps": 0.028163551010558972,
+  "enc_ground_est_peak_5samples_mps": 0.023867673479987576,
+  "step_net_during_vref_m": -0.00026507188014663886,
+  "enc_net_during_vref_m": -7.853981633974484e-05,
+  "motor_off_confirmed": true,
+  "usb_bad_frames": 0,
+  "notes": [
+    "Use robot t_us, not host USB arrival time.",
+    "enc_l/enc_r are already converted to equivalent STEP counts at 12800/rev by firmware; not raw magnetic counts.",
+    "Five-sample speed is approximately 100 ms; UART channels are asynchronous. Ground estimate uses filtered tilt and is not independent ground truth.",
+    "Single trials; vref ramp area differs; distance during nonzero vref is not total recovered displacement."
+  ]
+}

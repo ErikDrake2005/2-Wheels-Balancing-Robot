@@ -48,6 +48,7 @@ public:
     }
     Decision service(uint64_t now, bool motorEnabled) {
         Decision d;
+        if (!motorEnabled) remoteArmConfirmed = false;
         if (pendingDisable) {
             d.disable = true; d.seq = pendingDisable; disableAwaiting = pendingDisable;
             pendingDisable = pendingStop = 0; pendingMove = pendingHeartbeat = 0;
@@ -71,20 +72,28 @@ public:
             armAwaiting = pendingMove = pendingHeartbeat = 0;
         }
         if (motionUntil && now >= motionUntil) { v = yaw = 0; motionUntil = 0; }
-        if (motorEnabled && authority && armAwaiting) { applied(armAwaiting); armAwaiting = 0; }
+        if (motorEnabled && authority && armAwaiting) {
+            remoteArmConfirmed = true;
+            applied(armAwaiting);
+            armAwaiting = 0;
+        }
         if (!motorEnabled && disableAwaiting) { applied(disableAwaiting); disableAwaiting = 0; }
         if (pendingMove) { applied(pendingMove); pendingMove = 0; }
         if (pendingHeartbeat) { applied(pendingHeartbeat); pendingHeartbeat = 0; }
         return d;
     }
-    void desired(uint64_t now, float& speed, float& turn) const {
+    bool desired(uint64_t now, float& speed, float& turn) const {
         speed = turn = 0;
         if (authority && !expired && now < heartbeatUntil && motionUntil && now < motionUntil) {
             speed = v; turn = yaw;
         }
+        // HELLO chỉ mở telemetry. Khi đã arm từ xa, giữ lệnh 0 sau STOP/hết lease
+        // cho tới khi tắt motor để lệnh WebUI không bật lại chuyển động bất ngờ.
+        return authority || remoteArmConfirmed;
     }
     void cancel() {
         authority = false; expired = true; v = yaw = 0;
+        remoteArmConfirmed = false;
         pendingArm = armAwaiting = pendingMove = pendingHeartbeat = 0;
     }
     void telemetry(ChanDoanEspNow::GoiTelemetry& t) const {
@@ -106,5 +115,5 @@ private:
     uint32_t armAwaiting = 0, disableAwaiting = 0;
     uint64_t armAt = 0, heartbeatUntil = 0, motionUntil = 0;
     float v = 0, yaw = 0;
-    bool authority = false, expired = false;
+    bool authority = false, expired = false, remoteArmConfirmed = false;
 };

@@ -22,6 +22,13 @@ struct ThongTinTrangThaiWeb {
     bool daoChieuDongCo = false;
     bool gocHopLe = false;
     bool heThongSanSang = false;
+    bool logRungSupported = false, logRungEnabled = false, logRungReceiver = false;
+    bool hoTroCalib2Truc = false, canCalibLap = false;
+    uint8_t phaCalib2Truc = 0;
+    uint16_t mauCalib2Truc = 0, tongMauCalib2Truc = 0;
+    char loiCalib2Truc[32] = "none";
+    uint32_t logRungId = 0, logRungQueueDrop = 0, logRungTxDrop = 0, logRungProduced = 0;
+    uint16_t logRungHz = 0;
     float gocNghienDo = 0.0f;
     float gocCanBangDo = 0.0f;
     float gocDatDo = 0.0f;
@@ -51,7 +58,7 @@ public:
     static constexpr size_t soDongNhatKyToiDa = 36u;
     static constexpr size_t doDaiDongNhatKyToiDa = 160u;
 
-    using HamNhanDiChuyen = std::function<void(float vanTocTienLui, float tocDoQuayNgang)>;
+    using HamNhanDiChuyen = std::function<void(float vanTocTienLui, float tocDoQuayNgang, const MucLenhWeb& mucWeb)>;
     using HamNhanPhimLenh = std::function<void(char kyTuLenh)>;
     using HamNhanDongLenh = std::function<void(const char* dongLenh)>;
     using HamLayTrangThai = std::function<void(ThongTinTrangThaiWeb& trangThaiRa)>;
@@ -69,6 +76,9 @@ public:
     bool espNowSanSang() const { return daBatEspNow; }
     uint32_t tongSoGoiEspNow() const { return demGoiEspNow; }
     uint32_t tongSoGoiNhiPhan() const { return demGoiNhiPhan; }
+    uint8_t soKhachWifiAp() const;
+    const char* mucCongSuatWifi() const { return chuoiCongSuatWifi; }
+    bool datCongSuatWifi(int dbm);
     const char* diaChiIpAp() const { return chuoiDiaChiIp; }
     const char* diaChiMacXe() const { return chuoiDiaChiMac; }
 
@@ -101,6 +111,7 @@ private:
     uint32_t demGoiNhiPhan = 0;
     char chuoiDiaChiIp[24] = "0.0.0.0";
     char chuoiDiaChiMac[24] = "00:00:00:00:00:00";
+    char chuoiCongSuatWifi[12] = "11dBm";
 
     portMUX_TYPE khoaDuLieuEspNow = portMUX_INITIALIZER_UNLOCKED;
     bool coLenhDiChuyenEspNow = false;

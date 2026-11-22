@@ -1,0 +1,1 @@
+﻿host_utc,host_elapsed_s,bridge_rx_us,boot_id,bridge_session,diag_session,packet_seq,log_id,t_us,motor_us,sample_seq,cfg,motor_session,en,angle_valid,cmd_l,cmd_r,steps_l,steps_r,enc_l,enc_r,uart_rx_l,uart_rx_r,uart_age_l_us,uart_age_r_us,diag_packet_gap,rssi_dbm,serial_drop,serial_crc16

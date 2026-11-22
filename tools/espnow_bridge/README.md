@@ -1,8 +1,11 @@
 # Cầu nối ESP-NOW cho xe hai bánh cân bằng
 
 ESP32 DevKit/WROOM-32 nối USB với máy tính; ESP32-S3 trên xe hoạt động bằng pin.
-Hai thiết bị cùng kênh Wi-Fi 1. Firmware mới trên xe là `radio-20261116`.
-Gói telemetry 223 byte ở nhịp mục tiêu 50 Hz; callback Wi-Fi chỉ chép vào queue.
+Hai thiết bị cùng kênh Wi-Fi 1. Firmware đang thử trên xe là `radio-ab-20261116`.
+Giao thức ứng dụng version 2 dùng gói telemetry 224 byte ở nhịp mục tiêu 50 Hz;
+callback Wi-Fi chỉ chép vào queue. Robot và cầu nối cần cùng version giao thức.
+Các lựa chọn A/B và cột `diag_flags` được mô tả trong
+[`THU_NGHIEM_AB_DI_CHUYEN.md`](../../docs/THU_NGHIEM_AB_DI_CHUYEN.md).
 
 ## Nạp và ghép cặp lần đầu
 
@@ -14,8 +17,8 @@ Gói telemetry 223 byte ở nhịp mục tiêu 50 Hz; callback Wi-Fi chỉ chép
 3. Trên cầu nối gửi `connect AC:27:6E:D0:3A:24`. Đây là MAC STA của xe đã ghi
    nhận trong phiên trước; phải đọc lại nếu thay ESP32 trên xe.
 4. Đầu tiên chỉ `monitor`, xác nhận boot ID, timestamp nguồn, trạng thái motor
-   tắt và dữ liệu góc/encoder còn mới. Chưa đo được tầm hoạt động 2–5 m trên
-   phần cứng cho đến khi có cả hai thiết bị.
+   tắt và dữ liệu góc/encoder còn mới. Đã kiểm tra liên lạc ở khoảng cách dưới
+   1 m với anten thoáng; tầm hoạt động 2–5 m chưa được đo trên phần cứng.
 
 `connect` tạo session ngẫu nhiên mới; robot chỉ nhận đúng MAC đã ghép, đúng
 boot ID và thứ tự gói mới. Ghép mới khi robot đang tắt motor. CRC kiểm lỗi,
@@ -29,7 +32,8 @@ không phải cơ chế mã hóa/chống giả mạo. Giữ hệ thống thử t
   Chỉ cho PID thuần trong công cụ thử ban đầu. Không tự arm khi khởi động lại.
 - `move 0.05 0 100`: tiến 0,05 m/s với lease 100 ms. Muốn giữ chuyển động phải
   có lệnh mới; không tự phát lại từ hàng đợi. Giao thức giới hạn tối đa 0,10 m/s,
-  0,30 rad/s và lease150 ms; công cụ thử ban đầu chỉ dùng 0,05 m/s, không rẽ.
+  0,30 rad/s và lease150 ms. Công cụ đã dùng xung 0,05–0,10 m/s, chưa thử rẽ;
+  thời lượng xung tối đa 1 giây và tích |v|×thời lượng tối đa 0,05 m.
 - `stop`: đưa lệnh tiến/rẽ về0, khóa di chuyển và giữ bộ cân bằng chạy. Cần
   `arm` mới để cấp lại quyền. Không hiểu STOP là đã tắt điện motor.
 - `disarm`: tắt motor rõ ràng; người vận hành phải sẵn sàng đỡ xe.

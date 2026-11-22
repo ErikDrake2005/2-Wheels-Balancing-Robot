@@ -33,7 +33,67 @@ KhungDuLieuImu taoMau(uint64_t thoiDiem_us, float giaTocTien = 0) {
     mau.trangThai = TrangThaiKhungDuLieuImu::HopLe;
     return mau;
 }
+#if CAU_HINH_IMU == IMU_LSM6DSV_SPI
+void kiemTraChuyenGiuHuongLSM(unsigned chuKy_us) {
+    CascadeController boRe, boDiThang;
+    TrangThaiXe xe{};
+    xe.gocHopLe = xe.viTriHopLe = xe.vanTocHopLe = true;
+    uint64_t t = 1000;
+    const float buocQuay = giaTocLenhQuay_radps2 * chuKy_us * 1e-6f;
+    const double metMoiBuoc = DifferentialDrive::metersPerStep();
+    const float vMax = tanSoStepToiDa_hz * metMoiBuoc;
+    float quayTruoc = 0;
+    auto chay = [&](float re, bool coTheMatDuDia = false) {
+        t += chuKy_us;
+        WheelStepCommand banh{}, thang{};
+        TrangThaiXe xeThang = xe;
+        xeThang.vanTocBanhPhai_mps = xeThang.vanTocBanhTrai_mps = 0;
+        kiemTra(boRe.update(xe,t,false,banh,0,re) && boDiThang.update(xeThang,t,false,thang),
+                "hai bo dieu khien cung nhan mau");
+        const double vl = banh.tocDoBuocTrai_buocTrenGiay * metMoiBuoc;
+        const double vr = banh.tocDoBuocPhai_buocTrenGiay * metMoiBuoc;
+        const double vCanBang = thang.tocDoBuocTrai_buocTrenGiay * metMoiBuoc;
+        kiemTra(std::fabs((vl + vr) / 2 - vCanBang) < 1e-6 &&
+                std::max(std::fabs(vl), std::fabs(vr)) <= vMax + 1e-6,
+                "giu nguyen tac dong PID pitch va tran van toc tung banh khi re");
+        const float quay = static_cast<float>((vr-vl) / khoangCachTamHaiBanh_m);
+        if (!coTheMatDuDia)
+            kiemTra(std::fabs(quay-quayTruoc) <= buocQuay + 2e-6f,
+                    "gioi han gia toc quay tai dau ra khi chuyen giu huong/re");
+        quayTruoc = quay;
+        return quay;
+    };
+
+    chay(0);
+    xe.vanTocBanhPhai_mps = 0.4f;
+    xe.vanTocBanhTrai_mps = -0.4f;
+    for (unsigned i=0; i<75; ++i) chay(0);
+    kiemTra(std::fabs(quayTruoc + gioiHanTocDoQuayGiuHuong) < 2e-6f, "dat muc bu giu huong");
+    for (unsigned i=0; i<150; ++i) chay(0.5f);
+    kiemTra(std::fabs(quayTruoc - .5f) < 2e-6f, "lenh re nguoi dung dat chinh xac");
+    for (unsigned i=0; i<150; ++i) chay(0); // Nhả cần hoặc lease hết hạn.
+    kiemTra(std::fabs(quayTruoc + gioiHanTocDoQuayGiuHuong) < 2e-6f, "nhan lai giu huong");
+
+    xe.gocNghien_rad = .25f; // Tạo bão hòa vận tốc chung rồi trả lại dư địa rẽ.
+    for (unsigned i=0; i<90; ++i) chay(.5f,true);
+    kiemTra(std::fabs(quayTruoc) < 2e-6f, "nhuong het du dia cho pitch");
+    xe.gocNghien_rad = -.25f;
+    for (unsigned i=0; i<12; ++i) chay(.5f);
+
+    boRe.reset();
+    boDiThang.reset();
+    xe = {};
+    xe.gocHopLe = xe.viTriHopLe = xe.vanTocHopLe = true;
+    quayTruoc = 0;
+    chay(0);
+    kiemTra(std::fabs(chay(.5f) - buocQuay) < 2e-6f, "phien moi re tu zero, khong them tre cho lenh tay");
+}
+#endif
 int main() {
+#if CAU_HINH_IMU == IMU_LSM6DSV_SPI
+    kiemTraChuyenGiuHuongLSM(4167);
+    kiemTraChuyenGiuHuongLSM(5000);
+#endif
     LocThongThap loc;
     kiemTra(loc.capNhat(2,0.005f,40)==2, "loc khoi tao tu mau dau, khong xung gia");
     const float loi = std::numeric_limits<float>::quiet_NaN();
@@ -49,6 +109,35 @@ int main() {
     const double tyLe=std::sqrt(nangLuongRa/nangLuongVao);
     kiemTra(tyLe>0.49 && tyLe<0.52, "suy giam 50Hz PT1 khop tinh toan");
     kiemTra(loc.capNhat(3,0.005f,0)==3, "fc0 bypass");
+
+    // Sai lệch clock cảm biến quanh 200 Hz vẫn phải giữ lưới vòng ngoài 50 Hz.
+    // Kiv * sai lệch vận tốc cố định cho phép quan sát từng lần cập nhật góc đặt.
+    if (dungProfileImuRieng) for (unsigned chuKyImu_us : {4999u, 5000u, 5001u}) {
+        CascadeController boThu;
+        boThu.setPidVanTocThuan(0.0f, 0.01f);
+        TrangThaiXe xe{};
+        xe.gocHopLe = xe.vanTocHopLe = true;
+        xe.vanTocDoc_mps = -0.01f;
+        WheelStepCommand lenh{};
+        uint64_t t = 1000, mocVongNgoai = t;
+        float gocTruoc = 0;
+        unsigned soLanVongNgoai = 0;
+        boThu.update(xe, t, false, lenh);
+        for (unsigned i = 0; i < 400; ++i) {
+            t += chuKyImu_us;
+            kiemTra(boThu.update(xe, t, false, lenh), "nhan mau IMU lech clock nhe");
+            if (boThu.gocDat_rad() != gocTruoc) {
+                ++soLanVongNgoai;
+                mocVongNgoai = t;
+                gocTruoc = boThu.gocDat_rad();
+            }
+        }
+        kiemTra(soLanVongNgoai == (t - 1000) / chuKyVongVanToc_us,
+                "vong ngoai giu du so ky 50Hz, khong mat phan du");
+        const float gocTinhToan = 0.0001f * (mocVongNgoai - 1000) * 1e-6f;
+        kiemTra(std::fabs(gocTruoc - gocTinhToan) < 1e-7f,
+                "tich phan vong ngoai dung dt thuc sau khi giu luoi thoi gian");
+    }
 
     ComplementaryEstimator uocLuong{HeTrucImu{MaTranQuayImu{}}};
     TrangThaiXe trangThai{};
@@ -105,6 +194,22 @@ int main() {
     tang.reset();
     kiemTra(tang.vanTocMucTieu_mps()==0 && tang.tocDoQuayMucTieu_radps()==0,"reset xoa muc tieu cu");
 
+    // A/B chỉ tác động tạo lệnh ngoài, không sửa PID góc hoặc gia tốc cứu cân bằng.
+    for (bool tangBam : {false,true}) {
+        CascadeController thu;
+        thu.setThuNghiemDiChuyen(false,tangBam);
+        thu.setPidVanTocThuan(0.15f,0);
+        auto xe=trangThai; xe.vanTocDoc_mps=0;
+        for (unsigned k=0;k<=4;++k)
+            kiemTra(thu.update(xe,1000+k*5000,false,buoc,0.1f,0),"A/B update hop le");
+        kiemTra(std::fabs(thu.vanTocMucTieu_mps()-.01f)<1e-6f,"tat accelboost giu ramp 0.5m/s2 sau mau dau");
+        const float factor=tangBam?2.2f:1.0f;
+        kiemTra(std::fabs(thu.gocDat_rad()-(gocCanBang_rad+.15f*factor*.01f))<1e-6f,
+                "co vgainboost doi dung thanh phan bam van toc");
+        thu.reset();
+        kiemTra(!thu.tangGiaTocDiChuyen() && thu.tangBamVanTocDiChuyen()==tangBam,"reset khong doi lua chon A/B");
+    }
+
     // M5: khi truyền gia tốc tịnh tiến đã lệnh vào bộ ước lượng, accel không bị kéo lệch góc.
     ComplementaryEstimator uocLuongBu{HeTrucImu{MaTranQuayImu{}}};
     TrangThaiXe trangThaiBu{};
@@ -117,6 +222,16 @@ int main() {
         kiemTra(std::fabs(trangThaiBu.gocTuGiaToc_rad)<0.001f && std::fabs(trangThaiBu.gocNghien_rad)<0.001f,
                 "M5 khong lech goc khi tang toc 3 m/s2");
     }
+
+    // Nếu gia tốc lệnh khác chuyển động thật, phần bù có thể tạo lệch góc dù gyro đứng yên.
+    ComplementaryEstimator buSai{HeTrucImu{MaTranQuayImu{}}}, khongBu{HeTrucImu{MaTranQuayImu{}}};
+    TrangThaiXe xeBuSai{}, xeKhongBu{};
+    for (unsigned k=0;k<=200;++k) {
+        auto mau=taoMau(1000+k*5000,0);
+        kiemTra(buSai.update(mau,xeBuSai,.2f) && khongBu.update(mau,xeKhongBu,0),"mo phong sai so gia toc lenh hop le");
+    }
+    kiemTra(std::fabs(xeBuSai.gocNghien_rad)>.01f && std::fabs(xeKhongBu.gocNghien_rad)<.001f,
+            "bai tong hop: bu sai gia toc lenh khong duoc coi la do goc doc lap");
 
     // Kiểm tra bộ điều khiển Mamdani (MIN - MAX - Centroid/CoG):
     {
@@ -429,6 +544,162 @@ int main() {
         kiemTra(viTriMucTieuLucChay > 0.08f && boDiaHinh.viTriMucTieu_m() > 0.08f &&
                 std::fabs(vanTocDiaHinh) < 0.02,
                 "Khoa vi tri moi tai diem dung ma khong keo lui ve goc 0");
+    }
+
+#if CAU_HINH_IMU == IMU_LSM6DSV_SPI
+    // Kiem tra nha ga em tren LSM6DSV khong tao buoc nhay goc dat dot ngot (ca khi bat va tat vgainboost):
+    for (bool batTangBam : {false, true}) {
+        CascadeController boNhaGa;
+        boNhaGa.setThuNghiemDiChuyen(false, batTangBam);
+        boNhaGa.setPidVanTocThuan(lsm6dsvTune::kpv, lsm6dsvTune::kiv);
+        TrangThaiXe xeNha{};
+        WheelStepCommand lenhNha{};
+        xeNha.gocHopLe = xeNha.viTriHopLe = xeNha.vanTocHopLe = true;
+        xeNha.viTriDoc_m = 0.0f;
+        xeNha.vanTocDoc_mps = 0.0f;
+        boNhaGa.update(xeNha, 1000u, false, lenhNha, 0.25f, 0.0f);
+        for (unsigned mau = 1u; mau <= 120u; ++mau) {
+            xeNha.viTriDoc_m += 0.0005f;
+            xeNha.vanTocDoc_mps = 0.10f;
+            boNhaGa.update(xeNha, 1000u + mau * 5000u, false, lenhNha, 0.25f, 0.0f);
+        }
+        float gocDatTruoc_rad = boNhaGa.gocDat_rad();
+        float buocNhayToiDa_rad = 0.0f;
+        for (unsigned mau = 121u; mau <= 200u; ++mau) {
+            xeNha.viTriDoc_m += 0.0002f;
+            boNhaGa.update(xeNha, 1000u + mau * 5000u, false, lenhNha, 0.0f, 0.0f);
+            const float delta = std::fabs(boNhaGa.gocDat_rad() - gocDatTruoc_rad);
+            if (delta > buocNhayToiDa_rad) buocNhayToiDa_rad = delta;
+            gocDatTruoc_rad = boNhaGa.gocDat_rad();
+        }
+        kiemTra(buocNhayToiDa_rad < 0.015f,
+                "LSM6DSV nha ga khong tao buoc nhay goc dat qua 0.015 rad");
+    }
+
+    // Kiem tra bo tham so lap lich gain theo |v|, bien du tru on dinh khi chay va loc muot goc dat 240 Hz tren LSM6DSV:
+    {
+        kiemTra(lsm6dsvTune::kp >= 24.0f && lsm6dsvTune::kd <= 2.4f &&
+                lsm6dsvTune::kd * lsm6dsvTune::heSoGiamChayKd <= 1.85f &&
+                lsm6dsvTune::kdMo * lsm6dsvTune::heSoGiamChayKd * 1.5f <= 2.30f &&
+                lsm6dsvTune::gyroD_hz >= 50.0f && lsm6dsvTune::locGocDat_s > lsm6dsvTune::locGocDatTinh_s &&
+                lsm6dsvTune::tangBamVanToc,
+                "LSM6DSV giu do cung dung yen cao, giam an toan khi chay, bat tang bam van toc va loc muot goc dat");
+        // Kiem tra du goc dat de vuot nguong ma sat lan khi keo tien muc vua (0.325 m/s ~65%):
+        {
+            CascadeController boDayTien;
+            boDayTien.setThuNghiemDiChuyen(lsm6dsvTune::tangGiaToc, lsm6dsvTune::tangBamVanToc);
+            boDayTien.setPidVanTocThuan(lsm6dsvTune::kpv, lsm6dsvTune::kiv);
+            TrangThaiXe xeDung{};
+            WheelStepCommand lenhDay{};
+            xeDung.gocHopLe = xeDung.viTriHopLe = xeDung.vanTocHopLe = true;
+            uint64_t tDay_us = 1000u;
+            boDayTien.update(xeDung, tDay_us, false, lenhDay, 0.325f, 0.0f);
+            for (unsigned m = 1u; m <= 240u; ++m) {
+                tDay_us += 4167u;
+                boDayTien.update(xeDung, tDay_us, false, lenhDay, 0.325f, 0.0f);
+            }
+            kiemTra(boDayTien.gocDat_rad() >= 0.105f && boDayTien.gocDatHieuDung_rad() >= 0.105f,
+                    "LSM6DSV keo tien 65% dat goc dat >= 6.0 deg de vuot nguong lan banh");
+        }
+        CascadeController boLocGocDat;
+        boLocGocDat.setThuNghiemDiChuyen(false, false);
+        boLocGocDat.setPidVanTocThuan(lsm6dsvTune::kpv, lsm6dsvTune::kiv);
+        boLocGocDat.setGocCanBang_rad(0.05f);
+        TrangThaiXe xeLoc{};
+        WheelStepCommand lenhLoc{};
+        xeLoc.gocHopLe = xeLoc.viTriHopLe = xeLoc.vanTocHopLe = true;
+        uint64_t thoiDiem_us = 1000u;
+        boLocGocDat.update(xeLoc, thoiDiem_us, false, lenhLoc, 0.0f, 0.0f);
+        // 1. Dung yen (|v|=0): giu nguyen Kp/Kd dung yen.
+        for (unsigned mau = 1u; mau <= 10u; ++mau) {
+            thoiDiem_us += 4167u;
+            boLocGocDat.update(xeLoc, thoiDiem_us, false, lenhLoc, 0.0f, 0.0f);
+        }
+        kiemTra(std::fabs(boLocGocDat.heSoPid().heSoTiLe - kpGocPidThuan) < 1e-4f &&
+                std::fabs(boLocGocDat.heSoPid().heSoViPhan - kdGocPidThuan) < 1e-4f,
+                "LSM6DSV dung yen giu dung Kp/Kd do cung cao");
+        for (unsigned mau = 1u; mau <= 240u; ++mau) {
+            thoiDiem_us += 4167u;
+            xeLoc.vanTocDoc_mps = 0.15f;
+            boLocGocDat.update(xeLoc, thoiDiem_us, false, lenhLoc, 0.40f, 0.0f);
+        }
+        // 2. Khi chay (|v|=0.15 m/s): giam em xuong heSoGiamChayKp / heSoGiamChayKd.
+        kiemTra(std::fabs(boLocGocDat.heSoPid().heSoTiLe - kpGocPidThuan * lsm6dsvTune::heSoGiamChayKp) < 0.05f &&
+                std::fabs(boLocGocDat.heSoPid().heSoViPhan - kdGocPidThuan * lsm6dsvTune::heSoGiamChayKd) < 0.01f,
+                "LSM6DSV khi chay giam em Kp/Kd de triet dao dong 10 Hz");
+        float gocHieuDungTruoc = boLocGocDat.gocDatHieuDung_rad();
+        float deltaHieuDungMax = 0.0f;
+        float chenhLechTruoc = std::fabs(boLocGocDat.gocDat_rad() - gocHieuDungTruoc);
+        bool thayTreSauStep = false;
+        bool hoiTuDonDieu = true;
+        float gocThoTruoc = boLocGocDat.gocDat_rad();
+        for (unsigned mau = 1u; mau <= 120u; ++mau) {
+            thoiDiem_us += 4167u;
+            boLocGocDat.update(xeLoc, thoiDiem_us, false, lenhLoc, -0.40f, 0.0f);
+            const float gocTho = boLocGocDat.gocDat_rad();
+            const float gocHieuDung = boLocGocDat.gocDatHieuDung_rad();
+            const float delta = std::fabs(gocHieuDung - gocHieuDungTruoc);
+            if (delta > deltaHieuDungMax) deltaHieuDungMax = delta;
+            if (std::fabs(gocTho - gocHieuDung) > 1e-4f) thayTreSauStep = true;
+            const float chenhLech = std::fabs(gocTho - gocHieuDung);
+            if (std::fabs(gocTho - gocThoTruoc) < 1e-6f) {
+                if (chenhLech > chenhLechTruoc + 1e-6f) hoiTuDonDieu = false;
+            }
+            chenhLechTruoc = chenhLech;
+            gocThoTruoc = gocTho;
+            gocHieuDungTruoc = gocHieuDung;
+        }
+        kiemTra(deltaHieuDungMax < 0.004f && thayTreSauStep && hoiTuDonDieu,
+                "LSM6DSV loc muot goc dat tai 240Hz khi dao chieu dot ngot va hoi tu don dieu");
+
+        // 3. Tro lai dung yen (|v|=0): phuc hoi Kp/Kd dung yen; Bench Mode giu nguyen he so goc.
+        xeLoc.vanTocDoc_mps = 0.0f;
+        for (unsigned mau = 1u; mau <= 240u; ++mau) {
+            thoiDiem_us += 4167u;
+            boLocGocDat.update(xeLoc, thoiDiem_us, false, lenhLoc, 0.0f, 0.0f);
+        }
+        kiemTra(std::fabs(boLocGocDat.heSoPid().heSoTiLe - kpGocPidThuan) < 0.05f &&
+                std::fabs(boLocGocDat.heSoPid().heSoViPhan - kdGocPidThuan) < 0.01f,
+                "LSM6DSV phuc hoi Kp/Kd dung yen khi xe dung lai");
+        boLocGocDat.setCheDoThuKhongMaSat(true);
+        xeLoc.vanTocDoc_mps = 0.25f;
+        for (unsigned mau = 1u; mau <= 60u; ++mau) {
+            thoiDiem_us += 4167u;
+            boLocGocDat.update(xeLoc, thoiDiem_us, false, lenhLoc, 0.0f, 0.0f);
+        }
+        kiemTra(std::fabs(boLocGocDat.heSoPid().heSoTiLe - kpGocPidThuan) < 1e-4f,
+                "Bench Mode khong giam gain khi banh quay trong khong khi");
+        boLocGocDat.setCheDoThuKhongMaSat(false);
+        xeLoc.vanTocDoc_mps = 0.0f;
+
+        boLocGocDat.reset();
+        kiemTra(std::fabs(boLocGocDat.gocDatHieuDung_rad() - boLocGocDat.gocCanBangThucTe_rad()) < 1e-6f,
+                "LSM6DSV reset dua gocDatHieuDung ve goc can bang");
+        for (unsigned mau = 1u; mau <= 20u; ++mau) {
+            thoiDiem_us += 4167u;
+            boLocGocDat.update(xeLoc, thoiDiem_us, false, lenhLoc, 0.40f, 0.0f);
+        }
+        kiemTra(std::fabs(boLocGocDat.gocDatHieuDung_rad() - boLocGocDat.gocCanBangThucTe_rad()) > 1e-4f,
+                "LSM6DSV gocDatHieuDung thay doi khi vong ngoai hoat dong");
+        boLocGocDat.setBatVongNgoai(false);
+        kiemTra(std::fabs(boLocGocDat.gocDatHieuDung_rad() - boLocGocDat.gocCanBangThucTe_rad()) < 1e-6f,
+                "LSM6DSV tat vong ngoai dua gocDatHieuDung ve goc can bang");
+    }
+#endif
+
+    // Kiem tra trong truong tham chieu tuy chinh (vd 9.42 m/s^2 tu static LSM6DSV):
+    {
+        ComplementaryEstimator uocLuongRef{HeTrucImu{MaTranQuayImu{}}};
+        uocLuongRef.datTrongTruongThamChieu_mps2(9.42f);
+        TrangThaiXe xeRef{};
+        KhungDuLieuImu mau942 = taoMau(1000u, 0.0f);
+        mau942.giaTocZ_mps2 = 9.42f;
+        kiemTra(uocLuongRef.update(mau942, xeRef) && xeRef.doTinCayGiaToc > 0.99f && xeRef.giaTocTinCay,
+                "Trong truong tham chieu 9.42 m/s^2 giup trust tinh dat >0.99");
+        mau942 = taoMau(6000u, 3.0f);
+        mau942.giaTocZ_mps2 = 9.42f;
+        kiemTra(uocLuongRef.update(mau942, xeRef) && xeRef.doTinCayGiaToc < 0.01f,
+                "Trong truong tham chieu 9.42 van loai xung gia toc ngang 3 m/s^2 qua innovation");
     }
 
     // 4. Kiem tra khoa huong quay ngang giu cho hai banh khong xoay lech khi dung tai cho:

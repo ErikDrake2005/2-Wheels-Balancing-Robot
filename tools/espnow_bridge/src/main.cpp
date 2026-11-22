@@ -201,7 +201,7 @@ void printHeader() {
         "motor_fault,control_phase,motor_phase,angle_valid,feedback,theta,rate,target,eq,v,vref,yawref,cmd_l,cmd_r,"
         "a_cmd,gyro_d,acc_norm,innov,trust,kp,ki,kd,steps_l,steps_r,enc_l,enc_r,uart_age_l_us,uart_age_r_us,"
         "uart_rx_l,uart_rx_r,imu_miss,imu_i2c,imu_late,robot_tx_drop,robot_tx_fail,robot_rx_reject,"
-        "robot_rx_duplicate,bridge_rx_overflow,bridge_reject,bridge_missed_radio,bridge_tx_errors,usb_dropped,rssi_dbm,serial_crc16\n");
+        "robot_rx_duplicate,bridge_rx_overflow,bridge_reject,bridge_missed_radio,bridge_tx_errors,usb_dropped,rssi_dbm,diag_flags,serial_crc16\n");
 }
 
 void printTelemetry() {
@@ -216,7 +216,7 @@ void printTelemetry() {
     const int size = std::snprintf(line, sizeof(line),
         "BN,%llu,%lu,%lu,%lu,%llu,%llu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,"
         "%.7g,%.7g,%.7g,%.7g,%.6g,%.6g,%.6g,%.7g,%.7g,%.7g,%.7g,%.7g,%.7g,%.6g,%.6g,%.6g,%.6g,"
-        "%lld,%lld,%lld,%lld,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%d\n",
+        "%lld,%lld,%lld,%lld,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%d,%u\n",
         static_cast<unsigned long long>(telemetryRxUs), static_cast<unsigned long>(t.boot_id),
         static_cast<unsigned long>(t.h.session), static_cast<unsigned long>(t.h.seq),
         static_cast<unsigned long long>(t.t_us), static_cast<unsigned long long>(t.motor_us),
@@ -236,7 +236,7 @@ void printTelemetry() {
         static_cast<unsigned long>(t.tx_fail), static_cast<unsigned long>(t.rx_reject),
         static_cast<unsigned long>(t.rx_duplicate), static_cast<unsigned long>(overflow),
         static_cast<unsigned long>(rejected), static_cast<unsigned long>(missedRadio),
-        static_cast<unsigned long>(txErrors), static_cast<unsigned long>(usbDropped), static_cast<int>(telemetryRssi));
+        static_cast<unsigned long>(txErrors), static_cast<unsigned long>(usbDropped), static_cast<int>(telemetryRssi), static_cast<unsigned>(t.diag_flags));
     if (size > 0 && static_cast<size_t>(size)+8 < sizeof(line)) {
         const size_t payloadLength = static_cast<size_t>(size)-1; // bỏ newline để tính CRC.
         const uint16_t crc = tinhCrc16(reinterpret_cast<const uint8_t*>(line), payloadLength);

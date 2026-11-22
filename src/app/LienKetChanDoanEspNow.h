@@ -2,6 +2,7 @@
 #include <Arduino.h>
 #include <esp_now.h>
 #include "core/GiamSatLenhTuXa.h"
+#include "model/GiaoThucKhaoSatRung.h"
 
 class LienKetChanDoanEspNow {
 public:
@@ -16,6 +17,9 @@ public:
     bool desired(uint64_t now, float& v, float& yaw);
     void cancel();
     void sendTelemetry(ChanDoanEspNow::GoiTelemetry& packet);
+    bool logReceiverReady(uint64_t now);
+    bool sendLog(KhaoSatRung::Samples& packet);
+    bool sendLog(KhaoSatRung::Info& packet);
 private:
     static void onSend(const wifi_tx_info_t*, esp_now_send_status_t status);
     static LienKetChanDoanEspNow* instance;
@@ -24,5 +28,9 @@ private:
     uint8_t peer[6]{};
     char macText[18] = "unset";
     bool ready = false, configured = false, motorOff = true, busy = false;
+    uint64_t busySinceUs = 0;
     uint32_t txSeq = 0, dropped = 0, failed = 0, rejectedPackets = 0;
+    uint32_t logSession = 0, logRxSeq = 0, logTxSeq = 0;
+    uint64_t logUntil = 0;
+    template<class T> bool sendLogPacket(T& packet);
 };

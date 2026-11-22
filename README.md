@@ -1,5 +1,12 @@
 # 2-Wheels-Balacing-Robot
 
+Xe MKS có ba cấu hình IMU: chọn `lolin_s3_mini` cho ICM20602 I²C, `lolin_s3_mini_lsm6dsv` cho LSM6DSV SPI, hoặc `lolin_s3_mini_mpu6050` cho MPU6050 I²C (kèm Biquad khử rung + SISO). Xem [Sơ đồ chân, cấu hình và hiệu chuẩn LSM6DSV](docs/KET_NOI_LSM6DSV_ESP32S3.md) và [Cấu hình MPU6050, lọc khử rung & SISO](docs/KET_NOI_MPU6050_VA_SISO.md).
+
+Profile LSM có công tắc **Log rung ESP-NOW** trên WebUI. ESP thu dùng
+[sketch Arduino](tools/espnow_rung_receiver/espnow_rung_receiver/espnow_rung_receiver.ino),
+máy tính ghi CSV liên tục với `tools/thu_rung_lsm6dsv.py`.
+[Cách nạp, ghép MAC và thu phiên thử](docs/THU_RUNG_LSM6DSV_ESP_NOW.md).
+
 **Chuẩn bị chẩn đoán không dây:** firmware `radio-20261116` bổ sung telemetry
 ESP-NOW hai chiều qua ESP32 DevKit/WROOM-32 cắm USB vào máy tính. Ghép MAC một
 lần khi xe tắt motor; lệnh có boot/session/sequence và lease tối đa 150 ms.

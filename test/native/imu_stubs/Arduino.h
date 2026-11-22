@@ -6,8 +6,10 @@
 #include <vector>
 
 inline uint64_t dongHoGia_ms = 0;
+inline uint32_t dongHoGia_subUs = 0;
 inline uint32_t millis() { return static_cast<uint32_t>(dongHoGia_ms); }
-inline uint32_t micros() { return static_cast<uint32_t>(dongHoGia_ms * 1000); }
+inline uint32_t micros() { return static_cast<uint32_t>(dongHoGia_ms * 1000ULL + dongHoGia_subUs); }
+inline uint64_t microsExact64() { return dongHoGia_ms * 1000ULL + dongHoGia_subUs; }
 inline void delay(uint32_t ms) { dongHoGia_ms += ms; }
 constexpr int LOW = 0, HIGH = 1, INPUT_PULLUP = 2, INPUT_PULLDOWN = 3;
 inline std::function<int(int)> docNutGia;

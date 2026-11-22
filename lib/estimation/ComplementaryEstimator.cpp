@@ -43,12 +43,12 @@ bool ComplementaryEstimator::update(const KhungDuLieuImu& khungDuLieu, TrangThai
     if (!std::isfinite(doLonGiaTocBu)) return false;
     Vec3Imu huongLenTuGiaToc = giaToc;
     if (!chuanHoaVecto(huongLenTuGiaToc)) return false;
-    const bool tinCayGiaToc = std::fabs(doLonGiaTocBu-9.80665f) <= saiLechGiaTocChoPhep_mps2;
+    const bool tinCayGiaToc = std::fabs(doLonGiaTocBu - _trongTruongThamChieu_mps2) <= saiLechGiaTocChoPhep_mps2;
     trangThaiXe.doLonGiaToc_mps2 = doLonGiaToc;
     // Giữ hướng ước lượng roll từ vectơ đứng đã lọc để tránh xung rung cơ khí gây ngắt giả.
     trangThaiXe.gocTuGiaToc_rad = std::atan2(-giaToc.x,std::hypot(giaToc.y,giaToc.z));
     trangThaiXe.doTinCayGiaToc = std::clamp(
-        1.0f-std::fabs(doLonGiaTocBu-9.80665f)/saiLechGiaTocChoPhep_mps2,0.0f,1.0f);
+        1.0f - std::fabs(doLonGiaTocBu - _trongTruongThamChieu_mps2) / saiLechGiaTocChoPhep_mps2, 0.0f, 1.0f);
 
     if (!_daKhoiTao) {
         if (!tinCayGiaToc) return false;

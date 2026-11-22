@@ -11,6 +11,7 @@ class Mt6701EncoderCounter {
 public:
     bool begin();
     bool beginUartMks() { return true; }
+    void datTamDungUart(bool) {}
     void reset();
     WheelPulseFrame read();
 private:

@@ -11,7 +11,7 @@
 // việc xác thực MAC/peer và thay phiên chỉ được quyết định ở lớp ứng dụng.
 namespace ChanDoanEspNow {
 constexpr uint32_t magic = 0x314E4358u; // Các byte trên dây là "XCN1".
-constexpr uint8_t version = 1u;
+constexpr uint8_t version = 2u;
 constexpr size_t kichThuocToiDa = 250u;
 constexpr uint16_t chuKyTelemetry_ms = 20u;
 constexpr uint16_t leaseToiDa_ms = 150u;
@@ -76,6 +76,7 @@ struct GoiTelemetry {
     uint8_t ack_opcode = 0;
     uint8_t ack_result = 0; // KetQuaLenh của lần nhận lệnh gần nhất.
     uint8_t remote_state = 0; // Bitmask TrangThaiTuXa.
+    uint8_t diag_flags = 0; // bit0: IMU command accel compensation; bit1: accel boost; bit2: moving velocity gain boost.
     uint16_t reserved = 0;
     float theta = 0, rate = 0, target = 0, eq = 0;
     float v = 0, vref = 0, yawref = 0;
@@ -94,7 +95,7 @@ struct GoiTelemetry {
 static_assert(sizeof(float) == 4 && std::numeric_limits<float>::is_iec559, "ESP-NOW requires float32 IEEE-754");
 static_assert(sizeof(Header) == 16 && sizeof(GoiHello) == 22 && sizeof(GoiLenh) == 34,
               "ESP-NOW v1 command layout changed");
-static_assert(sizeof(GoiTelemetry) == 223 && sizeof(GoiTelemetry) <= kichThuocToiDa,
+static_assert(sizeof(GoiTelemetry) == 224 && sizeof(GoiTelemetry) <= kichThuocToiDa,
               "ESP-NOW v1 telemetry layout changed or exceeds 250 bytes");
 static_assert(offsetof(GoiHello, crc) == sizeof(GoiHello) - 2 &&
               offsetof(GoiLenh, crc) == sizeof(GoiLenh) - 2 &&
@@ -141,7 +142,7 @@ inline bool helloHopLe(const GoiHello& goi) {
 }
 
 inline bool telemetryHopLe(const GoiTelemetry& t) {
-    if (!t.boot_id || !t.t_us || !t.motor_us || t.reserved || t.en > 1 || t.mode > 1 ||
+    if (!t.boot_id || !t.t_us || !t.motor_us || t.reserved || (t.diag_flags & ~7u) || t.en > 1 || t.mode > 1 ||
         t.angle_valid > 1 || t.control_phase > 2 || t.motor_phase > 2 || t.feedback > 2 ||
         (t.remote_state & ~(Bound | ControlLease | Expired))) return false;
     const float values[] = {t.theta,t.rate,t.target,t.eq,t.v,t.vref,t.yawref,t.cmd_l,t.cmd_r,t.a_cmd,

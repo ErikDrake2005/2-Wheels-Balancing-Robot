@@ -169,15 +169,30 @@ void AnglePidController::setHeSoCoSoMo(const PidGains& heSo) {
 }
 
 float AnglePidController::update(float gocNghien_rad, float tocDoNghien_radps, float gocMucTieu_rad, float buocThoiGian_s,
-                                 bool dungPidMo, int huongBaoHoaVanToc) {
+                                 bool dungPidMo, int huongBaoHoaVanToc, float heSoTyLeKp, float heSoTyLeKd) {
     if (!std::isfinite(gocNghien_rad) || !std::isfinite(tocDoNghien_radps) || !std::isfinite(gocMucTieu_rad) ||
         !std::isfinite(buocThoiGian_s) || buocThoiGian_s <= 0 || buocThoiGian_s > 0.02f ||
+        !std::isfinite(heSoTyLeKp) || !std::isfinite(heSoTyLeKd) ||
         huongBaoHoaVanToc < -1 || huongBaoHoaVanToc > 1) return std::numeric_limits<float>::quiet_NaN();
+    const float tyLeKp = std::clamp(heSoTyLeKp, 0.2f, 1.5f);
+    const float tyLeKd = std::clamp(heSoTyLeKd, 0.2f, 1.5f);
+#if CAU_HINH_IMU == IMU_MPU6050_I2C
+    // Khử rung động cơ 2 tầng cho MPU6050: Notch triệt cộng hưởng vi bước/khung -> Butterworth bậc 2 (-40 dB/dec).
+    const float tocDoSauNotch_radps = _locNotchGyroD.capNhatNotch(
+        tocDoNghien_radps, buocThoiGian_s, mpu6050Tune::gyroNotch_hz, mpu6050Tune::gyroNotch_q);
+    const float tocDoDaLoc_radps = _locButterworthGyroD.capNhatThongThap(
+        tocDoSauNotch_radps, buocThoiGian_s, tanSoLocGyroD_hz);
+#else
     const float tocDoDaLoc_radps = _locGyroD.capNhat(tocDoNghien_radps, buocThoiGian_s, tanSoLocGyroD_hz);
+#endif
     const float saiLechGoc_rad = gocNghien_rad - gocMucTieu_rad;
+    const PidGains coSoThuan{_heSoPidThuan.heSoTiLe * tyLeKp, _heSoPidThuan.heSoTichPhan,
+                             _heSoPidThuan.heSoViPhan * tyLeKd};
+    const PidGains coSoMo{_heSoCoSo.heSoTiLe * tyLeKp, _heSoCoSo.heSoTichPhan,
+                          _heSoCoSo.heSoViPhan * tyLeKd};
     _heSoPid = dungPidMo
-        ? scheduledGains(saiLechGoc_rad, tocDoDaLoc_radps, true, _heSoCoSo)
-        : _heSoPidThuan;
+        ? scheduledGains(saiLechGoc_rad, tocDoDaLoc_radps, true, coSoMo)
+        : coSoThuan;
     const float tichPhanDuKien_rad_s = std::clamp(_tichPhanGoc_rad_s + saiLechGoc_rad*buocThoiGian_s,
         -gioiHanTichPhanGoc_rad_s, gioiHanTichPhanGoc_rad_s);
     const float giaTocChuaGioiHan_mps2 =

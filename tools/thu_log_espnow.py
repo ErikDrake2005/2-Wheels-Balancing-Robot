@@ -72,6 +72,8 @@ def check_live(row, initial, require_authority=True):
     for k in ("boot_id", "bridge_session", "cfg"):
         if row[k] != initial[k]:
             raise RadioError(f"{k} thay đổi trong lần thử")
+    if row.get('diag_flags') != initial.get('diag_flags'):
+        raise RadioError('Cờ A/B thay đổi trong phiên đo')
     if any(int(row[k]) for k in ("control_fault", "motor_fault", "mode")) or not int(row["angle_valid"]):
         raise RadioError("Góc/PID/trạng thái lỗi không phù hợp")
     if require_authority and int(row.get('en','0')) and not (int(row.get('remote_state','0')) & 2):
@@ -112,6 +114,7 @@ def options(argv=None):
     p.add_argument("--out", type=Path, required=True)
     p.add_argument("--seconds", type=float, default=20)
     p.add_argument("--arm", action="store_true")
+    p.add_argument("--expect-diag-flags",type=int,help="yêu cầu đúng cờ A/B: bit0 imucomp, bit1 accelboost, bit2 vgainboost")
     p.add_argument("--arm-wait", type=float, default=20, help="giây chờ người vận hành dựng thẳng; cần ổn định 0,5 giây")
     p.add_argument("--native-usb", action="store_true", help="bật DTR cho cầu nối ESP32-S3 USB native; DevKit/WROOM không cần")
     p.add_argument("--pulse-v", type=float, default=0, help="m/s, tối đa 0,10; tích vận tốc × thời gian không quá 0,05 m")
@@ -131,6 +134,8 @@ def options(argv=None):
         p.error("disarm-at-end chỉ dùng với --arm")
     if a.release_gate and (not a.arm or a.release_gate.exists()):
         p.error("release-gate cần --arm và đường dẫn file chưa tồn tại")
+    if a.expect_diag_flags is not None and not 0 <= a.expect_diag_flags <= 7:
+        p.error('expect-diag-flags phải trong [0,7]')
     if not math.isfinite(a.arm_wait) or not 1 <= a.arm_wait <= 30:
         p.error("arm-wait phải trong [1,30] giây")
     return a
@@ -214,7 +219,7 @@ def main(argv=None):
                         if header and new_header != header:
                             raise RadioError("Schema thay đổi")
                         if not header:
-                            header = new_header; writer.writerow(["host_utc", "host_elapsed_s", *header])
+                            header = new_header; writer.writerow(["host_utc", "host_elapsed_s", "phase", *header])
                         continue
                     try:
                         row = parse_row(line, header)
@@ -231,7 +236,15 @@ def main(argv=None):
                         if a.arm and last and int(row["t_us"])-int(last["t_us"]) > 200000:
                             raise RadioError("Khoảng cách mẫu nguồn vượt 200 ms")
                         last_rx = now
-                        writer.writerow([datetime.now(timezone.utc).isoformat(), now-start, *(row[k] for k in header)])
+                        phase='monitor'
+                        if a.arm:
+                            if arm_at is None:phase='preflight'
+                            elif active_at is None:phase='await_arm'
+                            elif measurement_start is None:phase='wait_operator_release'
+                            elif now-measurement_start < 3:phase='settle_after_release'
+                            elif a.pulse_v and now-measurement_start < 3+a.pulse_seconds:phase='pulse_scheduled'
+                            else:phase='recovery' if a.pulse_v else 'measure'
+                        writer.writerow([datetime.now(timezone.utc).isoformat(), now-start, phase, *(row[k] for k in header)])
                         if now-last_flush >= .5:
                             raw.flush();table.flush();last_flush=now
                         count += 1; last = row
@@ -240,7 +253,8 @@ def main(argv=None):
                                 same = candidate is not None and all(row[k] == candidate[k] for k in ("boot_id","bridge_session","cfg"))
                                 same = same and all(row[k] == candidate[k] for k in ('imu_miss','imu_i2c','imu_late')) and \
                                     previous_preflight_host is not None and now-previous_preflight_host <= .15
-                                pose_ready = ready_to_arm(row)
+                                pose_ready = ready_to_arm(row) and (a.expect_diag_flags is None or
+                                    int(row.get('diag_flags','-1')) == a.expect_diag_flags)
                                 if not same or not pose_ready or upright_start_us is None:
                                     upright_start_us = int(row['t_us']) if pose_ready else None
                                     upright_start_host = now if pose_ready else None
@@ -250,7 +264,8 @@ def main(argv=None):
                                 previous_preflight_host = now
                                 if int(now-start) != last_wait_notice:
                                     print(json.dumps({'state':'waiting_upright','pitch_deg':round(math.degrees(float(row['theta'])),2),
-                                          'error_deg':round(math.degrees(float(row['theta'])-float(row['eq'])),2)},ensure_ascii=False),flush=True)
+                                          'error_deg':round(math.degrees(float(row['theta'])-float(row['eq'])),2),
+                                          'diag_flags':row.get('diag_flags')},ensure_ascii=False),flush=True)
                                     last_wait_notice = int(now-start)
                                 if upright_start_us is None or preflight_count < 20 or int(row['t_us'])-upright_start_us < 500000 or \
                                         now-upright_start_host < .5:
@@ -320,6 +335,7 @@ def main(argv=None):
     meta = {"completed": not errors, "errors": errors, "rows": count, "arm_requested": a.arm,
             "usb_bad_frames": usb_bad_frames, "uart_rx_buffer_65536_requested": uart_buffers_resized,
             "host_observed_radio_sequence_gaps":host_sequence_gaps,
+            "expected_diag_flags":a.expect_diag_flags,
             "arm_sent": arm_at is not None, "preflight_samples": preflight_count,
             "release_gate": str(a.release_gate) if a.release_gate else None,
             "operator_release_confirmed": release_at is not None if a.release_gate else None,

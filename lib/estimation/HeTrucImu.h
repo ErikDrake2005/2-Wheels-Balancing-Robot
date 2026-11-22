@@ -35,6 +35,7 @@ public:
     Vec3Imu chuyenSangXe(const Vec3Imu& vectoCamBien) const;
     static MaTranQuayImu tuGocLap_deg(float roll_deg, float pitch_deg, float yaw_deg);
     static bool kiemTraMaTran(const MaTranQuayImu& maTran);
+    static bool tuTuTheDung(const Vec3Imu& giaTocDung, Vec3Imu huongTienSensor, MaTranQuayImu& ketQua);
     // Accel trung bình lúc KHUNG XE thẳng + gyro của đoạn nghiêng TIẾN đã trừ bias.
     static bool tuHaiVector(const Vec3Imu& giaTocDung, const Vec3Imu& gyroNghiengTien,
                            MaTranQuayImu& ketQua);

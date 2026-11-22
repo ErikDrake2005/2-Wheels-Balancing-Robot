@@ -1,0 +1,14 @@
+{
+  "recorded_utc": "2026-11-16T09:37:09.645818+00:00",
+  "readiness": "User confirmed two wheels on floor, ready to arm now.",
+  "release_confirmation": "User confirmed hands off and self balancing before host release gate.",
+  "release_settle_seconds": 3,
+  "observed_after_release": "User confirmed robot vibrated little and was not touched after release.",
+  "configuration": "Pure PID, diag_flags=5, only accelboost disabled",
+  "validity_limits": [
+    "Short transient pulse, not steady-state velocity tracking.",
+    "No independent tilt or floor displacement sensor.",
+    "No long-duration vibration reproduced in this trial."
+  ],
+  "continuous_no_touch_user_confirmed": true
+}

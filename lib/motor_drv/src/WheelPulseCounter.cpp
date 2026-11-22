@@ -83,6 +83,19 @@ bool WheelPulseCounter::beginUartMks() {
     return true;
 }
 
+void WheelPulseCounter::datTamDungUart(bool tamDung) {
+    if (_tamDungUart == tamDung) return;
+    _tamDungUart = tamDung;
+    if (!tamDung && _uartSanSang) {
+        gpio_pulldown_dis(static_cast<gpio_num_t>(chanUartRxMksTrai));
+        gpio_pullup_en(static_cast<gpio_num_t>(chanUartRxMksTrai));
+        gpio_pulldown_dis(static_cast<gpio_num_t>(chanUartRxMksPhai));
+        gpio_pullup_en(static_cast<gpio_num_t>(chanUartRxMksPhai));
+        uart_flush_input(congUartMksTrai);
+        uart_flush_input(congUartMksPhai);
+    }
+}
+
 bool WheelPulseCounter::begin() {
     if (_daSanSang || _banhTrai.boDem || _banhPhai.boDem) return false;
     // Chỉ khởi tạo PCNT trước để giữ nguyên GPIO3 làm nút xác nhận trong suốt quá trình Calib ICM20602.
@@ -206,7 +219,7 @@ void WheelPulseCounter::docKenhUartMks(int congUart, Axis& trucBanh,
 }
 
 void WheelPulseCounter::serviceUartMks() {
-    if (!_uartSanSang) return;
+    if (!_uartSanSang || _tamDungUart) return;
     docKenhUartMks(congUartMksTrai, _banhTrai, diaChiUartMksTrai, diaChiUartMksPhai, chieuTienEncoderMksTraiDuong);
     docKenhUartMks(congUartMksPhai, _banhPhai, diaChiUartMksPhai, diaChiUartMksTrai, chieuTienEncoderMksPhaiDuong);
 

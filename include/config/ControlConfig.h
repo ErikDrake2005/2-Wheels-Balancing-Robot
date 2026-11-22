@@ -2,6 +2,9 @@
 #define CONTROLCONFIG_H
 
 #include <cstdint>
+#include "ImuProfile.h"
+#include "Lsm6dsvTuning.h"
+#include "Mpu6050Tuning.h"
 
 enum class KieuSuyLuanMo : uint8_t {
     SugenoBac0 = 0,
@@ -21,25 +24,26 @@ enum class CheDoDieuKhien : uint8_t {
 // PID trả gia tốc m/s²; sau đó tích phân thành vận tốc và đổi sang STEP/s.
 // Kd=3 chỉ hợp lý khi chiều dài con lắc hiệu dụng đủ lớn (xem RobotGeometry.h,
 // chieuDaiConLacHieuDung_m; đo thực tế bằng chu kỳ dao động khi lật ngược xe).
-constexpr float kpGoc = 30.0f;
-constexpr float kiGoc = 0.0f;
-constexpr float kdGoc = 3.0f;
+constexpr float kpGoc = dungLsm6dsv ? lsm6dsvTune::kpMo : (dungMpu6050 ? mpu6050Tune::kpMo : 30.0f);
+constexpr float kiGoc = dungLsm6dsv ? lsm6dsvTune::kiMo : (dungMpu6050 ? mpu6050Tune::kiMo : 0.0f);
+constexpr float kdGoc = dungLsm6dsv ? lsm6dsvTune::kdMo : (dungMpu6050 ? mpu6050Tune::kdMo : 3.0f);
 
 // PID thuần chọn từ các lượt khảo sát đứng cân bằng trên sàn ngày 15/11/2026.
 // Đây là bộ tốt nhất trong phạm vi đã thử; NVS có thể ghi đè các giá trị mặc định này.
 // Vòng ngoài giữ .15/.06 của xe đã đo; chưa suy rộng sang chạy/rẽ hoặc tải khác.
-constexpr float kpGocPidThuan = 33.0f;
-constexpr float kiGocPidThuan = 0.0f;
-constexpr float kdGocPidThuan = 3.3f;
-constexpr float kpVanTocPidThuan = 0.15f;
-constexpr float kiVanTocPidThuan = 0.06f;
+constexpr float kpGocPidThuan = dungLsm6dsv ? lsm6dsvTune::kp : (dungMpu6050 ? mpu6050Tune::kp : 33.0f);
+constexpr float kiGocPidThuan = dungLsm6dsv ? lsm6dsvTune::ki : (dungMpu6050 ? mpu6050Tune::ki : 0.0f);
+constexpr float kdGocPidThuan = dungLsm6dsv ? lsm6dsvTune::kd : (dungMpu6050 ? mpu6050Tune::kd : 3.3f);
+constexpr float kpVanTocPidThuan = dungLsm6dsv ? lsm6dsvTune::kpv : (dungMpu6050 ? mpu6050Tune::kpv : 0.15f);
+constexpr float kiVanTocPidThuan = dungLsm6dsv ? lsm6dsvTune::kiv : (dungMpu6050 ? mpu6050Tune::kiv : 0.06f);
 
 constexpr float gioiHanTichPhanGoc_rad_s = 0.1f;
 // Chưa nâng: cần xác nhận mô-men 17HS4401S/nguồn trước (đánh giá M1).
 constexpr float giaTocCanBangToiDa_mps2 = 3.0f;
 // Góc đặt cơ khí cần xác định riêng theo vị trí trọng tâm. UI_Calib không gán giá trị này.
 // 0 chỉ là giá trị khởi đầu, không phải kết quả người dùng dựng xe trong bước hiệu chuẩn.
-constexpr float gocCanBang_rad = 0.0f;
+constexpr float gocCanBang_rad =
+    dungLsm6dsv ? lsm6dsvTune::gocCanBang_rad : (dungMpu6050 ? mpu6050Tune::gocCanBang_rad : 0.0f);
 constexpr CheDoDieuKhien cheDoDieuKhienKhoiDong = CheDoDieuKhien::PidThuan;
 constexpr bool batPidMo = (cheDoDieuKhienKhoiDong == CheDoDieuKhien::PidMo);
 // Hệ số hãm trôi vận tốc khi chạy thử trên giá nhấc bánh không ma sát (Bench Mode):
@@ -55,8 +59,8 @@ constexpr float mienSaiLechMo_rad = 0.07f;
 constexpr float mienTocDoMo_radps = 0.7f;
 
 constexpr uint32_t chuKyVongVanToc_us = 20000; // 50 Hz, góc theo nhịp IMU.
-constexpr float kpVanToc = 0.15f; // rad / (m/s) - Giảm chấn vận tốc mặt đất.
-constexpr float kiVanToc = 0.06f; // rad / m     - Độ cứng giữ vị trí mặt đất (Position Hold).
+constexpr float kpVanToc = dungLsm6dsv ? lsm6dsvTune::kpvMo : (dungMpu6050 ? mpu6050Tune::kpvMo : 0.15f); // rad / (m/s) - Giảm chấn vận tốc mặt đất.
+constexpr float kiVanToc = dungLsm6dsv ? lsm6dsvTune::kivMo : (dungMpu6050 ? mpu6050Tune::kivMo : 0.06f); // rad / m     - Độ cứng giữ vị trí mặt đất (Position Hold).
 // Khóa trực tiếp tọa độ từ kế/xung 64-bit kết hợp Mamdani thích nghi độ cứng vị trí:
 constexpr bool batKhoaViTriChinhXac = true;
 constexpr float kiViTri_radpms = 0.0f;           // Giữ = 0 vì con lắc ngược có zero nửa mặt phẳng phải (non-minimum phase).
@@ -71,8 +75,15 @@ constexpr float gioiHanSaiLechHuongQuay = 0.50f;
 constexpr float gioiHanTocDoQuayGiuHuong = 0.45f;
 constexpr float nguongVanTocTinhBanh = 0.08f;
 constexpr float hangSoLocVanToc_s = 0.03f;
-// PT1 chỉ ở đường D/đầu vào tốc độ của mờ, không lọc chậm đường tích phân góc.
+// PT1 (ICM/LSM) hoặc Biquad Butterworth bậc 2 + Notch (MPU6050) chỉ ở đường D/đầu vào tốc độ của mờ,
+// không lọc chậm đường tích phân góc.
+#if CAU_HINH_IMU == IMU_LSM6DSV_SPI
+constexpr float tanSoLocGyroD_hz = lsm6dsvTune::gyroD_hz;
+#elif CAU_HINH_IMU == IMU_MPU6050_I2C
+constexpr float tanSoLocGyroD_hz = mpu6050Tune::gyroButterworth_hz;
+#else
 constexpr float tanSoLocGyroD_hz = 40.0f; // Danh nghĩa liên tục; -3 dB rời rạc xem báo cáo.
+#endif
 constexpr float vanTocDiChuyenToiDa_mps = 0.50f;
 constexpr float tocDoQuayToiDa_radps = 0.80f;
 constexpr float giaTocLenhDiChuyen_mps2 = 0.50f;
@@ -86,7 +97,8 @@ constexpr uint32_t hanLenhDiChuyen_us = 500000;
 constexpr bool buGocThanVaoQuangDuong = true;
 // Tối ưu 10/11/2026 (M5): trừ gia tốc tịnh tiến bánh ĐÃ LỆNH khỏi accel trước khi
 // lấy phương trọng lực. Phần R*thetaDDot và cánh tay đòn IMU chưa bù.
-constexpr bool buGiaTocLenhVaoImu = true;
+constexpr bool buGiaTocLenhVaoImu =
+    dungLsm6dsv ? lsm6dsvTune::buGiaTocImu : (dungMpu6050 ? mpu6050Tune::buGiaTocImu : true);
 // Chặn biên độ bù để lệnh lỗi không thể làm lệch accel quá mức.
 constexpr float giaTocBuImuToiDa_mps2 = 4.0f;
 

@@ -12,6 +12,8 @@ public:
     bool begin();
     // Chuyển GPIO3 sang chân RX1 (UART1) đọc vòng hồi tiếp từ kế MKS sau giai đoạn khởi tạo.
     bool beginUartMks();
+    // Tạm dừng giao tiếp UART MKS (ví dụ khi đang dùng nút nhấn GPIO3 để calib lúc motor tắt).
+    void datTamDungUart(bool tamDung);
     void reset();
     WheelPulseFrame read();
     bool coPhanHoiUartTrai() const { return _banhTrai.daCoMauUart; }
@@ -53,5 +55,6 @@ private:
     uint32_t _soLoiGhiUart = 0;
     uint64_t _thoiDiemDocTruoc_us = 0;
     bool _uartSanSang = false;
+    volatile bool _tamDungUart = false;
     bool _daSanSang = false;
 };

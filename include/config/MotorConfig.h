@@ -34,11 +34,11 @@ constexpr uint16_t soViBuocDauVaoDriver = dungPhanCungTmcMt ? soViBuocTmc2209 : 
 constexpr bool batUartEncoderMks = !dungPhanCungTmcMt;
 constexpr uint32_t soXungEncoderMksMoiVong = 65536;  // Lệnh 0x30 trên MKS Servo42C V1.1 trả carry (int32) + value (0..65535 = 1 vòng).
 constexpr uint32_t tocDoBaudUartMks_bps = 115200;     // Tốc độ UART tối đa 115200 bps trên MKS Servo42C V1.1.
-constexpr uint8_t diaChiUartMksTrai = 0xE1;           // Địa chỉ UART ưu tiên khi quét động cơ trái (tự khóa sang 0xE2 trên IO4 nếu phản hồi 0xE2).
-constexpr uint8_t diaChiUartMksPhai = 0xE2;           // Địa chỉ UART ưu tiên khi quét động cơ phải (tự khóa sang 0xE1 trên IO3 nếu phản hồi 0xE1).
+constexpr uint8_t diaChiUartMksTrai = 0xE1;           // Địa chỉ UART ưu tiên khi quét động cơ trái (IO3, tự khóa nếu phản hồi địa chỉ khác).
+constexpr uint8_t diaChiUartMksPhai = 0xE2;           // Địa chỉ UART ưu tiên khi quét động cơ phải (IO4, tự khóa nếu phản hồi địa chỉ khác).
 constexpr uint32_t chuKyDocUartMks_us = 5000;         // Đọc từ kế MKS mỗi 5 ms (luân phiên 2.5 ms trái / 2.5 ms phải).
-constexpr bool chieuTienEncoderMksTraiDuong = true;   // Khớp bánh TRÁI thực tế (GPIO 12/13, UART RX=IO4).
-constexpr bool chieuTienEncoderMksPhaiDuong = false;  // Khớp bánh PHẢI thực tế (GPIO 5/6, UART RX=IO3).
+constexpr bool chieuTienEncoderMksTraiDuong = false;  // Bánh TRÁI MKS (DIR=GPIO12, STEP=GPIO13, RX=IO3, 0xE1): DIR HIGH -> raw giảm.
+constexpr bool chieuTienEncoderMksPhaiDuong = true;   // Bánh PHẢI MKS (DIR=GPIO5, STEP=GPIO6, RX=IO4, 0xE2): DIR LOW -> raw tăng.
 constexpr bool batBuTruotUartMksVaoXung = false;      // Tắt hợp nhất UART 0x30 vào PCNT điều khiển vì hai kênh hỏi lệch pha 2,5 ms; vẫn đọc encoder để giám sát.
 constexpr float hangSoLocBuUartMks_s = 0.05f;         // Hằng số lọc PT1 (50 ms) hợp nhất bù trượt UART 0x30 êm vào PCNT.
 constexpr float tocDoBuUartToiDa_buocTrenGiay = 1200.0f; // Giới hạn tốc độ bù trượt tối đa (steps/s) tránh gai đạo hàm vận tốc.
@@ -65,8 +65,8 @@ constexpr float thoiGianKetBanhToiDa_s = 0.15f;       // Kẹt/mất bước qu�
 // begin() vẫn chuẩn bị phần cứng; enable() chỉ được chấp nhận khi true.
 constexpr bool daXacNhanCauHinhPhanCungMotor = true;
 constexpr bool mucBatMotorCao = false; // Khớp EN = L của MKS và ENN active-low của TMC2209.
-constexpr bool mucDirTienBanhTraiCao = dungPhanCungTmcMt ? false : true;  // Bánh TRÁI MKS (GPIO 12/13) tiến ở mức HIGH để khớp +X IMU.
-constexpr bool mucDirTienBanhPhaiCao = dungPhanCungTmcMt ? true : false;  // Bánh PHẢI MKS (GPIO 5/6) tiến ở mức LOW để khớp +X IMU.
+constexpr bool mucDirTienBanhTraiCao = dungPhanCungTmcMt ? false : true;  // Bánh TRÁI MKS (DIR=GPIO12, STEP=GPIO13) tiến ở mức HIGH.
+constexpr bool mucDirTienBanhPhaiCao = dungPhanCungTmcMt ? true : false;  // Bánh PHẢI MKS (DIR=GPIO5, STEP=GPIO6) tiến ở mức LOW.
 
 constexpr uint32_t thoiGianMucCaoStep_us = 10;       // Giá trị thử, dư rộng cho cả MKS và TMC2209 (TMC cần >= 100 ns).
 constexpr uint32_t thoiGianMucThapToiThieuStep_us = 10;    // Giá trị thử.
@@ -93,10 +93,14 @@ static_assert(80000000u % doPhanGiaiBoDemMcpwm_hz == 0,
 static_assert((static_cast<uint64_t>(chuKyKhoiTaoMcpwm_us) * doPhanGiaiBoDemMcpwm_hz + 999999u) / 1000000u < 65536u,
               "Chu ky khoi tao MCPWM vuot bo dem 16-bit");
 
-// >= 200 steps/s: dùng xung MCPWM liên tục. Chu kỳ <= 5 ms (khớp nhịp điều khiển 200 Hz).
-// < 200 steps/s: tích lũy phần bước và phát từng xung MCPWM hoàn chỉnh.
-// Không nâng lệnh nhỏ thành một tốc độ tối thiểu lớn hơn.
-constexpr float tanSoChayLienTucToiThieu_hz = 200.0f;
+// MKS dùng ngưỡng vào 140 Hz / ra 120 Hz (hysteresis 20 Hz) để giảm giật chuyển chế độ Continuous <-> Sparse;
+// TMC_MT giữ 200 Hz (clock 1 MHz: 120 Hz sẽ vượt 8333 < 65536 nhưng giữ nguyên hành vi cũ cho TMC_MT).
+constexpr float tanSoChayLienTucToiThieu_hz = dungPhanCungTmcMt ? 200.0f : 120.0f;
+constexpr float tanSoVaoChayLienTuc_hz = dungPhanCungTmcMt ? 200.0f : 140.0f;
+static_assert(tanSoChayLienTucToiThieu_hz > 0.0f &&
+              tanSoVaoChayLienTuc_hz >= tanSoChayLienTucToiThieu_hz &&
+              tanSoVaoChayLienTuc_hz <= tanSoStepToiDa_hz,
+              "Nguong chuyen che do xung lien tuc khong hop le");
 
 // service() cần được task sở hữu motor gọi đều, mục tiêu 250 us.
 // Đây là yêu cầu tích hợp, class không tự tạo task hay timer đánh thức.

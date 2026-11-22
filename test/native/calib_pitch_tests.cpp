@@ -1,9 +1,12 @@
 #include "HieuChuanNghiengDoc.h"
 #include "ComplementaryEstimator.h"
+#include "core/MaTranLapLsmNvs.h"
+#include <array>
 #include <cmath>
 #include <cstdlib>
 #include <iostream>
 #include <limits>
+#include <string>
 
 namespace {
 constexpr float g = 9.80665f, doiRad = 0.01745329252f;
@@ -20,6 +23,55 @@ Vec3Imu veCamBien(const MaTranQuayImu& lap, const Vec3Imu& than) {
 }
 Vec3Imu giaTocDoc(float goc_deg) {
     return {-g*std::sin(goc_deg*doiRad),0,g*std::cos(goc_deg*doiRad)};
+}
+
+struct NvsGia {
+    std::string key = "mount";
+    std::array<unsigned char, sizeof(mountLsm::BanGhi)> data{};
+    size_t length = sizeof(MaTranQuayImu);
+    bool loiGhi = false, loiDoc = false;
+    unsigned soLanGhi = 0;
+    bool isKey(const char* k) const { return key == k; }
+    size_t getBytesLength(const char*) const { return length; }
+    size_t getBytes(const char*, void* dest, size_t n) const {
+        if (loiDoc || n != length) return 0;
+        std::memcpy(dest, data.data(), n);
+        return n;
+    }
+    size_t putBytes(const char* k, const void* src, size_t n) {
+        ++soLanGhi;
+        if (loiGhi || n > data.size()) return 0;
+        key = k;
+        length = n;
+        std::memcpy(data.data(), src, n);
+        return n;
+    }
+};
+
+void kiemTraLuuHeTruc() {
+    NvsGia nvs;
+    const auto lap = HeTrucImu::tuGocLap_deg(4, -8, 90);
+    mountLsm::BanGhi kq{};
+    kq.ref_rad = .20f;
+    kiemTra(!mountLsm::doc(nvs, 0x71, kq) && kq.ref_rad == .20f, "loai ma tran cu khong co ID");
+    nvs.loiGhi = true;
+    kiemTra(!mountLsm::luu(nvs, 0x71, lap, -.04f), "bao loi ghi");
+    nvs.loiGhi = false;
+    nvs.loiDoc = true;
+    kiemTra(!mountLsm::luu(nvs, 0x71, lap, -.04f), "bao loi doc lai");
+    nvs.loiDoc = false;
+    kiemTra(mountLsm::doc(nvs, 0x71, kq) && kq.ref_rad == -.04f &&
+        std::memcmp(&kq.maTran, &lap, sizeof(lap)) == 0, "khoi phuc dung ma tran va ref");
+    const auto soLan = nvs.soLanGhi;
+    kiemTra(mountLsm::luu(nvs, 0x71, lap, -.04f) && nvs.soLanGhi == soLan, "tranh ghi lai cung cau hinh");
+    kiemTra(!mountLsm::doc(nvs, 0x70, kq) && !mountLsm::luu(nvs, 0x72, lap, 0), "ID khac");
+    MaTranQuayImu phanXa{};
+    phanXa.phanTu[0][0] = -1;
+    kiemTra(!mountLsm::luu(nvs, 0x71, phanXa, 0) &&
+        !mountLsm::luu(nvs, 0x71, lap, .36f) &&
+        !mountLsm::luu(nvs, 0x71, lap, std::numeric_limits<float>::quiet_NaN()), "tu choi ma tran/trim sai");
+    --nvs.length;
+    kiemTra(!mountLsm::doc(nvs, 0x71, kq), "tu choi ban ghi cat ngan");
 }
 HieuChuanNghiengDoc taoLuot(const MaTranQuayImu& lap, float gocQuay_rad, float nhieu = 0.005f) {
     HieuChuanNghiengDoc luot;
@@ -68,6 +120,21 @@ void kiemTraCacGocLap() {
         }
     }
 }
+void kiemTraCalibDung() {
+    // Với xe này -X_sensor hướng tới đầu, Z_sensor gần thẳng lên.
+    MaTranQuayImu r{};
+    kiemTra(HeTrucImu::tuTuTheDung({0,0,g}, {-1,0,0}, r), "calib dung -X");
+    const HeTrucImu he(r);
+    const Vec3Imu a = he.chuyenSangXe({g*std::sin(10*doiRad),0,g*std::cos(10*doiRad)});
+    const auto gyro = he.chuyenSangXe({0,-.3f,0});
+    kiemTra(std::fabs(std::atan2(-a.x,a.z)/doiRad - 10) < .001f && gyro.y > .29f,
+        "ha dau tang pitch, gyro cung dau");
+    const Vec3Imu up{0,.981f,9.757f};
+    kiemTra(HeTrucImu::tuTuTheDung(up,{-1,0,0},r) && HeTrucImu(r).chuyenSangXe(up).z > 9.8f,
+        "dung yen voi board hoi nghieng");
+    kiemTra(!HeTrucImu::tuTuTheDung({0,0,0},{1,0,0},r) &&
+        !HeTrucImu::tuTuTheDung({0,0,g},{0,0,1},r), "tu choi trong luc hoac huong tien suy bien");
+}
 void kiemTraLoaiLuotSai() {
     const auto lap=HeTrucImu::tuGocLap_deg(-4,5,30);
     const auto dung=veCamBien(lap,giaTocDoc(0));
@@ -104,6 +171,8 @@ void kiemTraLoaiLuotSai() {
 }
 }
 int main() {
+    kiemTraCalibDung();
+    kiemTraLuuHeTruc();
     kiemTraCacGocLap();
     kiemTraLoaiLuotSai();
     std::cout << "PASS: DAU/DUOI pitch calibration, mounting and reference ambiguity " << soDieuKien << " checks\n";
