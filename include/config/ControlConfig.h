@@ -11,12 +11,14 @@ enum class KieuSuyLuanMo : uint8_t {
     MamdaniCentroid = 1
 };
 
-// Hai chế độ bộ điều khiển độc lập có thể chọn lúc khởi động hoặc luân chuyển trực tiếp qua Serial ('f', 'm', 'p'):
-// - CheDoDieuKhien::PidThuan : Bộ điều khiển PID thuần kinh điển (hệ số cố định độc lập, không qua suy luận mờ).
-// - CheDoDieuKhien::PidMo    : Bộ điều khiển PID mờ Mamdani (chỉnh định thích nghi Kp, Ki, Kd theo 25 luật mờ).
+// Ba chế độ bộ điều khiển độc lập có thể chọn lúc khởi động hoặc luân chuyển trực tiếp qua Serial/WebUI ('p', 'm', 'u', 'f'):
+// - CheDoDieuKhien::PidThuan  : Bộ điều khiển PID thuần kinh điển (hệ số cố định độc lập, không qua suy luận mờ).
+// - CheDoDieuKhien::PidMo     : Bộ điều khiển PID mờ Mamdani (chỉnh định thích nghi Kp, Ki, Kd theo 25 luật mờ).
+// - CheDoDieuKhien::FuzzySiso : Bộ điều khiển mờ SISO 1 ngõ vào (Direct Mamdani 1D: vào e -> 7 tập ngôn ngữ không đều -> 7 luật -> Centroid -> gia tốc lệnh a_cmd, tương đương P phi tuyến).
 enum class CheDoDieuKhien : uint8_t {
     PidThuan = 0,
-    PidMo = 1
+    PidMo = 1,
+    FuzzySiso = 2
 };
 
 // Giá trị KHỞI ĐẦU để thử/tinh chỉnh trên xe; chưa được nhận dạng thực nghiệm.
@@ -57,6 +59,25 @@ constexpr KieuSuyLuanMo kieuSuyLuanMo = KieuSuyLuanMo::MamdaniCentroid;
 // Miền cũ 0,15 rad / 1,5 rad/s làm hàng NB/PB chỉ hoạt động khi đầu ra đã bị cắt.
 constexpr float mienSaiLechMo_rad = 0.07f;
 constexpr float mienTocDoMo_radps = 0.7f;
+// Miền chuẩn hóa và tâm 7 tập mờ ngôn ngữ không đều cho bộ điều khiển mờ SISO 1 vào (e -> 7 luật -> Centroid -> a_cmd):
+// 7 tập vào  (NB, NM, NS, Z, PS, PM, PB): [-1.00, -c2, -c1, 0, +c1, +c2, +1.00] * eMax_rad
+// 7 tập ra   (NB, NM, NS, Z, PS, PM, PB): [-1.00, -u2, -u1, 0, +u1, +u2, +1.00] * ku_mps2
+// Mặc định tối ưu giảm chao đảo nhưng vẫn giữ hệ số P tương đương > g (10,86..14,51 m/s²/rad trên 0,2..10°):
+constexpr float mienSaiLechMoSiso_rad = 0.21f;
+constexpr float tamVaoMoSiso1 = 0.45f;
+constexpr float tamVaoMoSiso2 = 0.76f;
+constexpr float tamRaMoSiso1 = 0.39f;
+constexpr float tamRaMoSiso2 = 0.73f;
+constexpr float giaTocMoSisoToiDa_mps2 = giaTocCanBangToiDa_mps2;
+
+struct CauHinhMoSiso {
+    float eMax_rad = mienSaiLechMoSiso_rad;
+    float c1 = tamVaoMoSiso1;
+    float c2 = tamVaoMoSiso2;
+    float u1 = tamRaMoSiso1;
+    float u2 = tamRaMoSiso2;
+    float ku_mps2 = giaTocMoSisoToiDa_mps2;
+};
 
 constexpr uint32_t chuKyVongVanToc_us = 20000; // 50 Hz, góc theo nhịp IMU.
 constexpr float kpVanToc = dungLsm6dsv ? lsm6dsvTune::kpvMo : (dungMpu6050 ? mpu6050Tune::kpvMo : 0.15f); // rad / (m/s) - Giảm chấn vận tốc mặt đất.
@@ -107,6 +128,9 @@ static_assert(tanSoLocGyroD_hz >= 0 && vanTocDiChuyenToiDa_mps > 0 &&
               giaTocLenhQuay_radps2 > 0 && hanLenhDiChuyen_us > 0, "Cau hinh di chuyen khong hop le");
 static_assert(kpGoc >= 0 && kiGoc >= 0 && kdGoc >= 0, "He so PID phai khong am");
 static_assert(mienSaiLechMo_rad > 0 && mienTocDoMo_radps > 0, "Mien mo phai duong");
+static_assert(mienSaiLechMoSiso_rad > 0 && tamVaoMoSiso1 > 0.05f && tamVaoMoSiso2 > tamVaoMoSiso1 &&
+              tamVaoMoSiso2 < 0.98f && tamRaMoSiso1 > 0.05f && tamRaMoSiso2 > tamRaMoSiso1 &&
+              tamRaMoSiso2 < 0.98f, "Cau hinh mo SISO 1 vao khong hop le");
 static_assert(giaTocCanBangToiDa_mps2 > 0 && gocDatToiDa_rad > 0 &&
               hangSoLocVanToc_s > 0 && chuKyVongVanToc_us > 0 &&
               gioiHanSaiLechViTri_m > 0 && gocBuTrongTamToiDa_rad >= 0, "Gioi han dieu khien khong hop le");

@@ -37,9 +37,9 @@ def fields_to_numbers(names, cells):
             value = int(cell)
             if value < (-1 if name == "age_us" else 0):
                 raise CaptureError(f"NC {name} ngoài miền")
-            if name in ("mode", "valid", "en", "bench", "vloop") and value not in (0, 1):
+            if name in ("valid", "en", "bench", "vloop") and value not in (0, 1):
                 raise CaptureError(f"NC {name} ngoài miền")
-            if name in ("cphase", "mphase", "feedback") and value not in (0, 1, 2):
+            if name in ("mode", "cphase", "mphase", "feedback") and value not in (0, 1, 2):
                 raise CaptureError(f"NC {name} ngoài miền")
         else:
             try:
@@ -146,20 +146,20 @@ def options(argv=None):
                    help="io_dataset khóa PID thuần và cấu hình hiện tại khi ghi u/y")
     p.add_argument("--condition", choices=("floor-unheld", "floor-held", "wheels-raised", "unknown"),
                    default="unknown", help="điều kiện thực nghiệm do người vận hành cung cấp")
-    p.add_argument("--mode", choices=("pid", "fuzzy"))
+    p.add_argument("--mode", choices=("pid", "fuzzy", "siso"))
     for key in GAIN_LIMITS:
         p.add_argument("--" + key, type=float, help="đặt trong RAM trước khi arm")
     p.add_argument("--step-limit-hz", type=float, help="trần STEP/s thực của bản nạp để tính tỷ lệ bão hòa")
     args = p.parse_args(argv)
     args.gains = {k: getattr(args, k) for k in GAIN_LIMITS if getattr(args, k) is not None}
     if args.purpose == "io_dataset":
-        if args.gains or args.mode == "fuzzy":
+        if args.gains or args.mode in ("fuzzy", "siso"):
             p.error("io_dataset cần PID thuần đã chốt, không được đổi mode hoặc gain")
         args.mode = "pid"
     if not math.isfinite(args.duration) or args.duration <= 0 or ((args.arm or args.purpose == "io_dataset") and args.duration < 18):
         p.error("live trial cần ít nhất 18 giây (3 giây ổn định + 15 giây đo)")
     if args.arm and args.mode is None:
-        p.error("--arm cần --mode pid hoặc --mode fuzzy")
+        p.error("--arm cần --mode pid, --mode fuzzy hoặc --mode siso")
     if not args.arm and args.purpose != "io_dataset" and (args.mode or args.gains):
         p.error("--mode và hệ số chỉ dùng khi có --arm")
     if any(not 0 <= v <= GAIN_LIMITS[k] for k, v in args.gains.items()):
@@ -244,7 +244,7 @@ class Trial:
             self.cfg_history.append(value.copy())
         elif kind == "console":
             self.event("console", line)
-            if line.startswith(("Mode=", "PID_THUAN:", "PID_MO", "Equilibrium:", "MKS_UART", "FIRMWARE")):
+            if line.startswith(("Mode=", "PID_THUAN:", "PID_MO", "FUZZY_SISO:", "Equilibrium:", "MKS_UART", "FIRMWARE", "[STEP]")):
                 self.status_lines.append(line)
             if line.startswith("[PID]") and "ngoai mien" in line:
                 self.refused = line
@@ -284,13 +284,13 @@ class Trial:
         raise CaptureError("hết thời gian chờ ba mẫu mới xác nhận EN=0 và NC_CFG")
 
     def configure(self):
-        mode = int(self.args.mode == "fuzzy")
+        mode = {"pid": 0, "fuzzy": 1, "siso": 2}.get(self.args.mode, 0)
         if self.args.purpose == "io_dataset":
             self.wait_off(expected=0, timeout=8)
             return self.protocol.cfg.copy()
         before = self.wait_off(timeout=8)
         self.send(self.args.mode)
-        suffix = "m" if mode else "p"
+        suffix = "m" if mode == 1 else "p"
         for key, value in self.args.gains.items():
             self.send(f"{key}_{suffix} {value:.6f}")
         self.wait_off(expected=mode, generation=(before["cfg"] + 1 + len(self.args.gains)) % (1 << 32))

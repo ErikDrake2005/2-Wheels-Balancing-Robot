@@ -883,5 +883,107 @@ int main() {
                 "Duong cong keo tang toc triet vung chet, tang phi tuyen va dat +/-1.0");
     }
 
+    // Kiem tra bo dieu khien mo SISO 1 ngo vao (e -> 7 tap ngon ngu khong deu -> 7 luat 1D -> Centroid -> a_cmd):
+    {
+        const float u0 = AnglePidController::suyDienMoSiso(0.0f);
+        const float uE1 = AnglePidController::suyDienMoSiso(0.005f);
+        const float uE2 = AnglePidController::suyDienMoSiso(0.04f);
+        const float uE3 = AnglePidController::suyDienMoSiso(0.10f);
+        const float uE4 = AnglePidController::suyDienMoSiso(0.21f);
+        const float uMax = AnglePidController::suyDienMoSiso(0.30f);
+        const float uMin = AnglePidController::suyDienMoSiso(-0.30f);
+        const float uPos = AnglePidController::suyDienMoSiso(0.055f);
+        const float uNeg = AnglePidController::suyDienMoSiso(-0.055f);
+        kiemTra(std::fabs(u0) < 1e-5f, "FUZZY_SISO 1 vao tai e=0 cho a_cmd=0");
+        kiemTra(std::fabs(uPos + uNeg) < 1e-4f, "FUZZY_SISO 1 vao doi xung le u(-e)=-u(e)");
+        kiemTra(0.0f < uE1 && uE1 < uE2 && uE2 < uE3 && uE3 < uE4,
+                "FUZZY_SISO 1 vao tang don dieu theo sai lech goc e");
+        kiemTra(std::fabs(uMax - giaTocMoSisoToiDa_mps2) < 1e-3f &&
+                std::fabs(uMin + giaTocMoSisoToiDa_mps2) < 1e-3f,
+                "FUZZY_SISO 1 vao bao hoa dung +/-giaTocMoSisoToiDa_mps2");
+        for (float eMau : {0.01f, 0.035f, 0.07f, 0.12f, 0.17f}) {
+            const float kpTd = AnglePidController::suyDienMoSiso(eMau) / eMau;
+            kiemTra(kpTd > 10.0f && kpTd < 16.0f,
+                    "FUZZY_SISO 1 vao co he so P tuong duong > g (10..16) tren toan mien");
+        }
+
+        AnglePidController boMoSisoDon;
+        kiemTra(!boMoSisoDon.setCauHinhMoSiso({0.21f, 0.60f, 0.50f, 0.39f, 0.73f, 3.0f}) &&
+                !boMoSisoDon.setCauHinhMoSiso({0.0f, 0.45f, 0.76f, 0.39f, 0.73f, 3.0f}) &&
+                !boMoSisoDon.setCauHinhMoSiso({0.21f, 0.45f, 0.76f, 0.39f, 0.73f, 5.0f}),
+                "setCauHinhMoSiso tu choi cau hinh khong hop le");
+        const float aMacDinh04 = boMoSisoDon.update(0.04f, -2.0f, 0.0f, 0.005f, false, 0, 1.0f, 1.0f, true);
+        const float aRateDuong = boMoSisoDon.update(0.04f, +2.0f, 0.0f, 0.005f, false, 0, 1.0f, 1.0f, true);
+        kiemTra(std::isfinite(aMacDinh04) && std::fabs(aMacDinh04 - aRateDuong) < 1e-6f &&
+                aMacDinh04 > 0.4f && aMacDinh04 <= giaTocMoSisoToiDa_mps2 &&
+                boMoSisoDon.heSoPid().heSoTiLe == 0.0f &&
+                boMoSisoDon.heSoPid().heSoTichPhan == 0.0f &&
+                boMoSisoDon.heSoPid().heSoViPhan == 0.0f,
+                "FUZZY_SISO 1 vao doc lap hoan toan voi rate/ec va de heSoPid=0");
+        kiemTra(boMoSisoDon.setCauHinhMoSiso({0.16f, 0.33f, 0.67f, 0.33f, 0.67f, 3.0f}),
+                "setCauHinhMoSiso nhan preset chat hon");
+        const float aChat04 = boMoSisoDon.update(0.04f, 0.0f, 0.0f, 0.005f, false, 0, 1.0f, 1.0f, true);
+        kiemTra(aChat04 > aMacDinh04, "Preset eMax nho hon tang do cung P tuong duong tai e=0.04rad");
+
+        // CascadeController khi dungMoSiso=true phai bo qua vong van toc/vi tri ngoai du batVongNgoai=true:
+        {
+            CascadeController boBoQuaVongNgoai;
+            TrangThaiXe xeVong{};
+            WheelStepCommand lenhVong{};
+            xeVong.gocHopLe = xeVong.viTriHopLe = xeVong.vanTocHopLe = true;
+            xeVong.vanTocDoc_mps = 0.15f;
+            boBoQuaVongNgoai.setGocCanBang_rad(0.02f);
+            boBoQuaVongNgoai.update(xeVong, 1000u, false, lenhVong, 0.25f, 0.0f, true);
+            boBoQuaVongNgoai.update(xeVong, 6000u, false, lenhVong, 0.25f, 0.0f, true);
+            kiemTra(boBoQuaVongNgoai.batVongNgoai() &&
+                    std::fabs(boBoQuaVongNgoai.gocDat_rad() - 0.02f) < 1e-6f &&
+                    std::fabs(boBoQuaVongNgoai.gocDatHieuDung_rad() - 0.02f) < 1e-6f,
+                    "CascadeController FUZZY_SISO bo qua vong van toc ngoai va giu dung gocCanBang");
+        }
+
+        // Vong kin con lac nguoc nghieng +0.05 rad (~2.86 deg) -> giu dung thang bang FUZZY_SISO 1 vao:
+        CascadeController boCanBangSiso;
+        DifferentialDrive odoSiso;
+        TrangThaiXe xeSiso{};
+        WheelStepCommand lenhSiso{};
+        double theta = 0.05;
+        double rate = 0.0;
+        double v = 0.0;
+        double x = 0.0;
+        double maxAbsTheta = 0.0;
+        bool thayDaoDong = false;
+        constexpr double dt = 0.005;
+        constexpr double subDt = dt / 10.0;
+        const auto nguonOdo = dungPhanCungTmcMt
+            ? NguonUocLuongQuangDuong::EncoderBanh
+            : NguonUocLuongQuangDuong::XungBuoc;
+        const double metMoiXung = DifferentialDrive::metersPerFeedbackPulse(nguonOdo);
+        const double metMoiBuoc = DifferentialDrive::metersPerStep();
+        for (unsigned mau = 0; mau < 800; ++mau) {
+            const uint64_t t_us = 1000u + mau * 5000u;
+            xeSiso.gocHopLe = true;
+            xeSiso.gocNghien_rad = static_cast<float>(theta);
+            xeSiso.tocDoNghien_radps = static_cast<float>(rate);
+            const int64_t xung = static_cast<int64_t>(std::llround(x / metMoiXung));
+            if (!odoSiso.update({xung, xung, t_us, true}, xeSiso, nguonOdo)) continue;
+            kiemTra(boCanBangSiso.update(xeSiso, t_us, false, lenhSiso, 0.0f, 0.0f, true),
+                    "CascadeController FUZZY_SISO 1 vao cap nhat hop le");
+            const double vMoi = lenhSiso.tocDoBuocTrai_buocTrenGiay * metMoiBuoc;
+            const double aThuc = (vMoi - v) / dt;
+            for (int k = 0; k < 10; ++k) {
+                rate += ((9.80665 * std::sin(theta) - aThuc * std::cos(theta)) / chieuDaiConLacHieuDung_m -
+                         0.5 * rate) * subDt;
+                theta += rate * subDt;
+            }
+            if (std::fabs(theta) > maxAbsTheta) maxAbsTheta = std::fabs(theta);
+            if (theta < -0.005) thayDaoDong = true;
+            x += 0.5 * (v + vMoi) * dt;
+            v = vMoi;
+            kiemTra(std::fabs(theta) < 0.15, "FUZZY_SISO 1 vao khong nga trong 4s mo phong");
+        }
+        kiemTra(maxAbsTheta < 0.15 && thayDaoDong,
+                "FUZZY_SISO 1 vao giu dung vung voi dao dong huu han dac trung cua P mo");
+    }
+
     std::printf("PASS: filter/motion/anti-windup/TMC_MT_closed_loop %u checks; PT1 50Hz amplitude=%.6f\n",soKiemTra,tyLe);
 }

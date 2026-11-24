@@ -24,7 +24,12 @@ public:
 #endif
     }
     float update(float gocNghien_rad, float tocDoNghien_radps, float gocMucTieu_rad, float buocThoiGian_s, bool dungPidMo,
-                 int huongBaoHoaVanToc = 0, float heSoTyLeKp = 1.0f, float heSoTyLeKd = 1.0f); // -1: trần âm, 0: chưa bão hòa, +1: trần dương.
+                 int huongBaoHoaVanToc = 0, float heSoTyLeKp = 1.0f, float heSoTyLeKd = 1.0f,
+                 bool dungMoSiso = false); // -1: trần âm, 0: chưa bão hòa, +1: trần dương.
+    static float suyDienMoSiso(float saiLechGoc_rad, const CauHinhMoSiso& cauHinh = CauHinhMoSiso{});
+    static bool cauHinhMoSisoHopLe(const CauHinhMoSiso& cauHinh);
+    CauHinhMoSiso cauHinhMoSiso() const { return _cauHinhMoSiso; }
+    bool setCauHinhMoSiso(const CauHinhMoSiso& cauHinh);
     PidGains heSoPid() const { return _heSoPid; }
     PidGains heSoPidThuan() const { return _heSoPidThuan; }
     PidGains heSoCoSoMo() const { return _heSoCoSo; }
@@ -43,6 +48,7 @@ private:
     PidGains _heSoPid{};
     PidGains _heSoCoSo;
     PidGains _heSoPidThuan;
+    CauHinhMoSiso _cauHinhMoSiso{};
     LocThongThap _locGyroD;
 #if CAU_HINH_IMU == IMU_MPU6050_I2C
     LocBiquadSiso _locNotchGyroD{LocBiquadSiso::LoaiLoc::KhiaNotch};

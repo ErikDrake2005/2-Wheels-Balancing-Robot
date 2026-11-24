@@ -103,7 +103,20 @@ assert(document.getElementById('nutCalib2s').className.includes('nutBiKhoa'));
 assert(document.getElementById('nutZeroNhanh').className.includes('nutBiKhoa'));
 assert(document.getElementById('nutDaoChieuDongCo').className.includes('nutBiKhoa'));
 assert.strictEqual(document.getElementById('nhacKhoaCalib').style.display, 'block');
-assert(document.getElementById('pidHieuDungTomTat').textContent.includes('Kp=35.40'));
+assert.strictEqual(document.getElementById('pidHieuDungTomTat').textContent.includes('Kp=35.40'), true);
+
+// Case D2: Active balancing in FUZZY_SISO
+apDungTrangThaiLenUi(Object.assign({}, baseStatus, {
+  daBat: true, dangChayPidMo: false, cheDoDieuKhien: 'FUZZY_SISO', kpHieuDung: 0, kiHieuDung: 0, kdHieuDung: 0
+}));
+assert.strictEqual(document.getElementById('oCheDo').textContent, 'Mờ SISO (Bánh)');
+assert(document.getElementById('nutChonMoSiso').className.includes('nutXanhDuong'));
+assert(document.getElementById('nutMoSisoNhanh').className.includes('nutXanhDuong'));
+assert(!document.getElementById('nutChonPidThuan').className.includes('nutXanhDuong'));
+assert(!document.getElementById('nutChonPidMo').className.includes('nutXanhDuong'));
+assert(document.getElementById('tieuDePid').textContent.includes('MỜ SISO TRỰC TIẾP'));
+assert(document.getElementById('pidHieuDungTomTat').textContent.includes('Mờ SISO trực tiếp'));
+assert(document.getElementById('pidHieuDungTomTat').textContent.includes('7 luật e -> a_cmd'));
 
 // Case E: Active in Bench mode
 apDungTrangThaiLenUi(Object.assign({}, baseStatus, { daBat: true, cheDoNangBanh: true }));

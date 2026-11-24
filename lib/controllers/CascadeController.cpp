@@ -77,7 +77,8 @@ void CascadeController::chotViTriGiuTaiCho() {
 }
 
 bool CascadeController::update(const TrangThaiXe& trangThaiXe, uint64_t thoiDiemHienTai_us,
-    bool dungPidMo, WheelStepCommand& lenhBanh, float vanTocYeuCau_mps, float tocDoQuayYeuCau_radps) {
+    bool dungPidMo, WheelStepCommand& lenhBanh, float vanTocYeuCau_mps, float tocDoQuayYeuCau_radps,
+    bool dungMoSiso) {
     lenhBanh = {};
     _giaTocBanhDaLenh_mps2 = 0;
     if (!trangThaiXe.gocHopLe || !trangThaiXe.vanTocHopLe || !std::isfinite(trangThaiXe.vanTocDoc_mps) ||
@@ -161,7 +162,8 @@ bool CascadeController::update(const TrangThaiXe& trangThaiXe, uint64_t thoiDiem
     coLenhDiChuyenDocTruoc = coLenhDiChuyenDoc;
 
     _thoiGianVongVanToc_s += buocThoiGian_s;
-    if (!_batVongNgoai) {
+    const bool dungVongNgoai = _batVongNgoai && !dungMoSiso;
+    if (!dungVongNgoai) {
         if (coViTriChinhXac) _viTriMucTieu_m = trangThaiXe.viTriDoc_m;
         _tichPhanVanToc_m = 0.0f;
         _gocBuTrongTam_rad = 0.0f;
@@ -196,7 +198,8 @@ bool CascadeController::update(const TrangThaiXe& trangThaiXe, uint64_t thoiDiem
             // - Khi dungPidMo == false (Chế độ PID Thuần): dùng bộ hệ số cố định độc lập _kpVanTocPidThuan, _kiVanTocPidThuan.
             const float saiLechViTri_m = std::clamp(
                 _viTriMucTieu_m - trangThaiXe.viTriDoc_m, -gioiHanSaiLechViTri_m, gioiHanSaiLechViTri_m);
-            const PidGains heSoVongNgoai = dungPidMo
+            const bool dungVongNgoaiMo = dungPidMo && !dungMoSiso;
+            const PidGains heSoVongNgoai = dungVongNgoaiMo
                 ? AnglePidController::scheduledGains(
                       saiLechViTri_m * 0.35f, saiLechVanToc_mps * 3.5f, true,
                       {kiVanTocPidMo, kiViTri_radpms, kpVanTocPidMo})
@@ -220,8 +223,9 @@ bool CascadeController::update(const TrangThaiXe& trangThaiXe, uint64_t thoiDiem
             _tichPhanVanToc_m = saiLechViTri_m;
             _gocDat_rad = _gocCanBang_rad + gocDaGioiHan_rad;
         } else {
-            const float kpV = dungPidMo ? kpVanTocPidMo : _kpVanTocPidThuan;
-            const float kiV = dungPidMo ? kiVanTocPidMo : _kiVanTocPidThuan;
+            const bool dungVongNgoaiMo = dungPidMo && !dungMoSiso;
+            const float kpV = dungVongNgoaiMo ? kpVanTocPidMo : _kpVanTocPidThuan;
+            const float kiV = dungVongNgoaiMo ? kiVanTocPidMo : _kiVanTocPidThuan;
             const float tichPhanDuKien_m = _tichPhanVanToc_m + saiLechVanToc_mps * _thoiGianVongVanToc_s;
             const float gocChuaGioiHan_rad = kpV * heSoBamVanTocDiChuyen * saiLechVanToc_mps + kiV * tichPhanDuKien_m;
             const float gocDaGioiHan_rad = std::clamp(gocChuaGioiHan_rad, -gocDatToiDa_rad, gocDatToiDa_rad);
@@ -234,7 +238,7 @@ bool CascadeController::update(const TrangThaiXe& trangThaiXe, uint64_t thoiDiem
     }
 
 #if CAU_HINH_IMU == IMU_LSM6DSV_SPI
-    if (!_batVongNgoai || lsm6dsvTune::locGocDat_s <= 0.0f) {
+    if (!dungVongNgoai || lsm6dsvTune::locGocDat_s <= 0.0f) {
         _gocDatSauLoc_rad = _gocDat_rad;
     } else {
         const float mucChuyenDong = std::clamp(
@@ -268,7 +272,7 @@ bool CascadeController::update(const TrangThaiXe& trangThaiXe, uint64_t thoiDiem
 #endif
     const float giaTocLenh_mps2 = _boPidGoc.update(
         trangThaiXe.gocNghien_rad, trangThaiXe.tocDoNghien_radps, gocMucTieuDieuKhien_rad,
-        buocThoiGian_s, dungPidMo, huongBaoHoaVanToc, heSoKp, heSoKd);
+        buocThoiGian_s, dungPidMo, huongBaoHoaVanToc, heSoKp, heSoKd, dungMoSiso);
     if (!std::isfinite(giaTocLenh_mps2)) return false;
     const float vanTocLenhTruoc_mps = _vanTocLenh_mps;
     // Ở chế độ thử nhấc bánh không ma sát (Bench Mode), thêm lực hãm tỷ lệ vận tốc để bánh

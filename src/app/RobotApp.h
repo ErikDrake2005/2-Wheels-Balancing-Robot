@@ -54,6 +54,8 @@ private:
         bool batVongNgoai = true;
         bool daoChieuDongCo = false;
         bool dungPidMo = batPidMo;
+        bool dungMoSiso = false;
+        CauHinhMoSiso cauHinhMoSiso{};
         // A/B trong RAM, mặc định giữ hành vi cũ; chỉ đổi khi motor tắt.
         bool buGiaTocImu = buGiaTocLenhVaoImu;
         bool tangGiaTocDiChuyen = dungLsm6dsv ? lsm6dsvTune::tangGiaToc : (dungMpu6050 ? mpu6050Tune::tangGiaToc : true);
@@ -137,6 +139,20 @@ private:
         bool coUartTrai = false, coUartPhai = false;
         char nhan[8]{};
     };
+    struct YeuCauBuocThu {
+        uint32_t maYeuCau = 0;
+        uint32_t maPhien = 0;
+        uint8_t loai = 0; // 0=huy, 1=vstep, 2=angstep
+        float giaTri = 0.0f; // m/s (vstep) hoac rad (angstep)
+        uint32_t giu_ms = 2000u;
+    };
+    struct KetQuaBuocThu {
+        uint32_t maYeuCau = 0;
+        bool hoanTat = false;
+        bool biHuy = false;
+        uint8_t loai = 0;
+        float giaTri = 0.0f;
+    };
 
     struct MotorStatus {
         uint64_t thoiDiemSnapshot_us = 0;
@@ -145,6 +161,7 @@ private:
         FaultCode loi = FaultCode::None;
         MksResult ketQuaCuoi = MksResult::Disabled;
         bool dungPidMo = batPidMo;
+        bool dungMoSiso = false;
         uint32_t khoangCachPhucVuLonNhat_us = 0;
         uint32_t maPhien = 0;
         uint32_t maResetXung = 0;
@@ -164,7 +181,7 @@ private:
         uint32_t maPhien = 0;
         uint32_t phienBanCauHinh = 0;
         CheDoCanBang phaDieuKhien = CheDoCanBang::Tat;
-        bool dungPidMo = false, bench = false, vongNgoai = false;
+        bool dungPidMo = false, dungMoSiso = false, bench = false, vongNgoai = false;
         uint8_t coThuNghiem = 0;
         PidGains heSoGocCoSo{};
         float kpVanTocCoSo = 0, kiVanTocCoSo = 0, giaTocLenh_mps2 = 0;
@@ -229,7 +246,7 @@ private:
     NhatKyNghienCuu _nhatKyNghienCuu;
     uint64_t _henMauNghienCuu_us = 0;
     uint32_t _soMauNghienCuuBo = 0, _thuTuDaGhi = 0, _phienBanDaGhi = 0;
-    bool _cheDoMoDaGhi = false;
+    uint8_t _cheDoDieuKhienDaGhi = 0;
     bool batTelemetryWeb = false;
     uint32_t mocTelemetryWebTruocMs = 0u;
     char _boDemLenhSerial[96]{};
@@ -252,6 +269,11 @@ private:
     KetQuaTestBanh _ketQuaTestBanh{};
     uint32_t _maKetQuaTestBanhDaIn = 0;
     bool _dangChoTestBanh = false;
+    portMUX_TYPE _khoaBuocThu = portMUX_INITIALIZER_UNLOCKED;
+    YeuCauBuocThu _yeuCauBuocThu{};
+    KetQuaBuocThu _ketQuaBuocThu{};
+    uint32_t _maKetQuaBuocThuDaIn = 0;
+    bool _dangChoBuocThu = false;
     TrangThaiCalib2Truc _calib2Truc{};
     HieuChuanNghiengDoc _luotCalibDoc;
     ThongKeMauImu _thongKeCalib2Truc;

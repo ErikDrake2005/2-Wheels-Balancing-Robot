@@ -413,7 +413,7 @@ button,input{font-family:inherit}
         <div class="hangBaNut">
           <button id="nutChonPidThuan" class="nut nutXanhDuong" onclick="guiPhim('p','Đã chọn PID Thuần')"><span>PID Thuần</span><span class="nutPhuNho">Hệ số cố định</span></button>
           <button id="nutChonPidMo" class="nut" onclick="guiPhim('m','Đã chọn PID Mờ Fuzzy')"><span>PID Mờ</span><span class="nutPhuNho">25 luật thích nghi</span></button>
-          <button class="nut" onclick="guiPhim('f','Đã đảo chế độ PID/Mờ')"><span>Đảo nhanh</span><span class="nutPhuNho">Phím (f)</span></button>
+          <button id="nutChonMoSiso" class="nut" onclick="guiPhim('u','Đã chọn Mờ SISO 1 vào')"><span>Mờ SISO</span><span class="nutPhuNho">7 luật 1 vào (P mờ)</span></button>
         </div>
       </div>
       <div class="nhomMucPhu" style="margin-bottom:9px">
@@ -447,6 +447,7 @@ button,input{font-family:inherit}
         <div style="display:flex;gap:6px">
           <button id="nutPidThuanNhanh" class="nutNho nutXanhDuong" onclick="guiPhim('p','Đã chọn PID Thuần')">PID Thuần</button>
           <button id="nutPidMoNhanh" class="nutNho" onclick="guiPhim('m','Đã chọn PID Mờ')">PID Mờ</button>
+          <button id="nutMoSisoNhanh" class="nutNho" onclick="guiPhim('u','Đã chọn Mờ SISO')">Mờ SISO</button>
         </div>
       </div>
       <div id="pidHieuDungTomTat" class="dongPhu" style="margin-bottom:8px;color:var(--xanhDuongSang);font-weight:600">Hệ số hiệu dụng: Kp=0.00 | Ki=0.00 | Kd=0.00</div>
@@ -1313,7 +1314,9 @@ function apDungTrangThaiLenUi(duLieu) {
   document.getElementById('oTocDoGoc').textContent = (duLieu.tocDoGocRadGiay || 0).toFixed(2);
   document.getElementById('oViTri').textContent = duLieu.viTriMet.toFixed(3) + ' m';
   document.getElementById('oVanToc').textContent = duLieu.vanTocMetGiay.toFixed(3) + ' m/s';
-  const tenCheDoDep = duLieu.dangChayPidMo ? 'PID Mờ' : 'PID Thuần';
+  const dangMoSiso = (duLieu.cheDoDieuKhien === 'FUZZY_SISO');
+  const dangPidMo = !dangMoSiso && Boolean(duLieu.dangChayPidMo);
+  const tenCheDoDep = dangMoSiso ? 'Mờ SISO' : (dangPidMo ? 'PID Mờ' : 'PID Thuần');
   document.getElementById('oCheDo').textContent = `${tenCheDoDep} (${dangBatBench ? 'Giá đỡ' : 'Bánh'})`;
   document.getElementById('oLoi').textContent = coLoi ? moTaMaLoi(duLieu.tenLoi) :
     (duLieu.tenSanSang && duLieu.tenSanSang !== 'none' ? moTaMaLoi(duLieu.tenSanSang) : 'Bình thường');
@@ -1324,21 +1327,12 @@ function apDungTrangThaiLenUi(duLieu) {
   document.getElementById('oGocNghienLai').textContent = duLieu.gocNghienDo.toFixed(2) + '°';
   document.getElementById('oVanTocLai').textContent = duLieu.vanTocMetGiay.toFixed(2) + ' m/s';
 
-  const nutThuan = document.getElementById('nutChonPidThuan');
-  const nutMo = document.getElementById('nutChonPidMo');
-  const nutThuanNhanh = document.getElementById('nutPidThuanNhanh');
-  const nutMoNhanh = document.getElementById('nutPidMoNhanh');
-  if (duLieu.dangChayPidMo) {
-    nutThuan.className = 'nut';
-    nutMo.className = 'nut nutXanhDuong';
-    nutThuanNhanh.className = 'nutNho';
-    nutMoNhanh.className = 'nutNho nutXanhDuong';
-  } else {
-    nutThuan.className = 'nut nutXanhDuong';
-    nutMo.className = 'nut';
-    nutThuanNhanh.className = 'nutNho nutXanhDuong';
-    nutMoNhanh.className = 'nutNho';
-  }
+  document.getElementById('nutChonPidThuan').className = (!dangPidMo && !dangMoSiso) ? 'nut nutXanhDuong' : 'nut';
+  document.getElementById('nutChonPidMo').className = dangPidMo ? 'nut nutXanhDuong' : 'nut';
+  document.getElementById('nutChonMoSiso').className = dangMoSiso ? 'nut nutXanhDuong' : 'nut';
+  document.getElementById('nutPidThuanNhanh').className = (!dangPidMo && !dangMoSiso) ? 'nutNho nutXanhDuong' : 'nutNho';
+  document.getElementById('nutPidMoNhanh').className = dangPidMo ? 'nutNho nutXanhDuong' : 'nutNho';
+  document.getElementById('nutMoSisoNhanh').className = dangMoSiso ? 'nutNho nutXanhDuong' : 'nutNho';
 
   const nutVong = document.getElementById('nutVongViTri');
   const nutBench = document.getElementById('nutBenchMode');
@@ -1384,9 +1378,10 @@ function apDungTrangThaiLenUi(duLieu) {
     nHuy2.className = dangChay2 ? 'nut nutDo' : 'nut nutDo nutBiKhoa';
   }
 
-  document.getElementById('tieuDePid').textContent = 'TINH CHỈNH: ' + (duLieu.dangChayPidMo ? 'PID MỜ (FUZZY)' : 'PID THUẦN');
-  document.getElementById('pidHieuDungTomTat').textContent =
-    `Hệ số hiệu dụng đang chạy: Kp=${duLieu.kpHieuDung.toFixed(2)} | Ki=${duLieu.kiHieuDung.toFixed(2)} | Kd=${duLieu.kdHieuDung.toFixed(2)}`;
+  document.getElementById('tieuDePid').textContent = 'TINH CHỈNH: ' + (dangMoSiso ? 'MỜ SISO TRỰC TIẾP' : (dangPidMo ? 'PID MỜ (FUZZY)' : 'PID THUẦN'));
+  document.getElementById('pidHieuDungTomTat').textContent = dangMoSiso
+    ? 'Mờ SISO trực tiếp (1 vào, P mờ): 7 luật e -> a_cmd (E_max=0.21rad, Ku=3.0m/s²)'
+    : `Hệ số hiệu dụng đang chạy: Kp=${duLieu.kpHieuDung.toFixed(2)} | Ki=${duLieu.kiHieuDung.toFixed(2)} | Kd=${duLieu.kdHieuDung.toFixed(2)}`;
   document.getElementById('thongTinPhu').textContent =
     `K hiệu dụng=(${duLieu.kpHieuDung.toFixed(2)}, ${duLieu.kiHieuDung.toFixed(2)}, ${duLieu.kdHieuDung.toFixed(2)}) | ` +
     `STEP=(${duLieu.xungBanhTrai}, ${duLieu.xungBanhPhai}) | MKS=(${duLieu.encoderTrai}, ${duLieu.encoderPhai}) | ` +

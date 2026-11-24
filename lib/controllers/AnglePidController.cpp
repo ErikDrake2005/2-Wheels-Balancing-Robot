@@ -81,6 +81,41 @@ float giaiMoMamdaniCentroid(const float doCaoCatNgon[5], float giaTriToiThieu, f
 }
 
 // ============================================================================
+// 1B. MÔ HÌNH MỜ SISO 1 NGÕ VÀO (Direct 1D Mamdani: vào e -> 7 tập ngôn ngữ không đều -> 7 luật -> Centroid -> a_cmd)
+// ============================================================================
+// 7 tập mờ tam giác (NB, NM, NS, Z, PS, PM, PB) tương đương khâu P phi tuyến, không phụ thuộc tốc độ góc ec.
+float hamLienThuocTamGiac(float x, float a, float b, float c) {
+    if (x <= a || x >= c) return 0.0f;
+    if (x == b) return 1.0f;
+    return (x < b) ? (x - a) / (b - a) : (c - x) / (c - b);
+}
+
+float giaiMoSiso1VaoCentroid(const float doCaoCatNgon[7], const CauHinhMoSiso& cauHinh) {
+    const float tamRa[7] = {-1.0f, -cauHinh.u2, -cauHinh.u1, 0.0f, cauHinh.u1, cauHinh.u2, 1.0f};
+    const float uBien = 1.0f + (1.0f - cauHinh.u2);
+    constexpr int soKhoang = 108;
+    const float buocU = (2.0f * uBien) / static_cast<float>(soKhoang);
+    float tuSo = 0.0f;
+    float mauSo = 0.0f;
+    for (int chiSoNut = 1; chiSoNut < soKhoang; ++chiSoNut) {
+        const float u = -uBien + static_cast<float>(chiSoNut) * buocU;
+        float muHop = 0.0f;
+        for (int k = 0; k < 7; ++k) {
+            if (doCaoCatNgon[k] <= muHop) continue;
+            const float trai = (k > 0) ? tamRa[k - 1] : -uBien;
+            const float phai = (k < 6) ? tamRa[k + 1] : uBien;
+            const float muTamGiac = hamLienThuocTamGiac(u, trai, tamRa[k], phai);
+            const float muCatNgon = std::min(doCaoCatNgon[k], muTamGiac); // Implication: MIN
+            if (muCatNgon > muHop) muHop = muCatNgon;                    // Aggregation: MAX
+        }
+        tuSo += u * muHop;
+        mauSo += muHop;
+    }
+    const float uChuanHoa = (mauSo > 0.0f) ? std::clamp(tuSo / mauSo, -1.0f, 1.0f) : 0.0f;
+    return uChuanHoa * cauHinh.ku_mps2;
+}
+
+// ============================================================================
 // 2. MÔ HÌNH TAKAGI-SUGENO BẬC 0 (AND = Product, Defuzz = Weighted Average)
 // ============================================================================
 constexpr float bangHeSoTiLe[5][5] = {
@@ -168,8 +203,40 @@ void AnglePidController::setHeSoCoSoMo(const PidGains& heSo) {
     if (std::isfinite(heSo.heSoViPhan) && heSo.heSoViPhan >= 0.0f) _heSoCoSo.heSoViPhan = heSo.heSoViPhan;
 }
 
+bool AnglePidController::cauHinhMoSisoHopLe(const CauHinhMoSiso& cauHinh) {
+    return std::isfinite(cauHinh.eMax_rad) && std::isfinite(cauHinh.c1) && std::isfinite(cauHinh.c2) &&
+           std::isfinite(cauHinh.u1) && std::isfinite(cauHinh.u2) && std::isfinite(cauHinh.ku_mps2) &&
+           cauHinh.eMax_rad >= 0.05f && cauHinh.eMax_rad <= 0.45f &&
+           cauHinh.c1 >= 0.05f && cauHinh.c2 >= cauHinh.c1 + 0.05f && cauHinh.c2 <= 0.95f &&
+           cauHinh.u1 >= 0.05f && cauHinh.u2 >= cauHinh.u1 + 0.05f && cauHinh.u2 <= 0.95f &&
+           cauHinh.ku_mps2 >= 0.50f && cauHinh.ku_mps2 <= giaTocCanBangToiDa_mps2;
+}
+
+bool AnglePidController::setCauHinhMoSiso(const CauHinhMoSiso& cauHinh) {
+    if (!cauHinhMoSisoHopLe(cauHinh)) return false;
+    _cauHinhMoSiso = cauHinh;
+    return true;
+}
+
+float AnglePidController::suyDienMoSiso(float saiLechGoc_rad, const CauHinhMoSiso& cauHinh) {
+    if (!std::isfinite(saiLechGoc_rad) || !cauHinhMoSisoHopLe(cauHinh)) {
+        return std::numeric_limits<float>::quiet_NaN();
+    }
+    const float eChuanHoa = std::clamp(saiLechGoc_rad / cauHinh.eMax_rad, -1.0f, 1.0f);
+    const float tamVao[7] = {-1.0f, -cauHinh.c2, -cauHinh.c1, 0.0f, cauHinh.c1, cauHinh.c2, 1.0f};
+    float muE[7]{};
+    muE[0] = (eChuanHoa <= -1.0f) ? 1.0f : std::max(0.0f, (tamVao[1] - eChuanHoa) / (tamVao[1] - tamVao[0]));
+    muE[6] = (eChuanHoa >= 1.0f) ? 1.0f : std::max(0.0f, (eChuanHoa - tamVao[5]) / (tamVao[6] - tamVao[5]));
+    for (int i = 1; i < 6; ++i) {
+        muE[i] = hamLienThuocTamGiac(eChuanHoa, tamVao[i - 1], tamVao[i], tamVao[i + 1]);
+    }
+    // 7 luật SISO 1 chiều: NẾU e là L_k THÌ u là L_k -> độ cao cắt ngọn chính bằng muE[k].
+    return std::clamp(giaiMoSiso1VaoCentroid(muE, cauHinh), -giaTocCanBangToiDa_mps2, giaTocCanBangToiDa_mps2);
+}
+
 float AnglePidController::update(float gocNghien_rad, float tocDoNghien_radps, float gocMucTieu_rad, float buocThoiGian_s,
-                                 bool dungPidMo, int huongBaoHoaVanToc, float heSoTyLeKp, float heSoTyLeKd) {
+                                 bool dungPidMo, int huongBaoHoaVanToc, float heSoTyLeKp, float heSoTyLeKd,
+                                 bool dungMoSiso) {
     if (!std::isfinite(gocNghien_rad) || !std::isfinite(tocDoNghien_radps) || !std::isfinite(gocMucTieu_rad) ||
         !std::isfinite(buocThoiGian_s) || buocThoiGian_s <= 0 || buocThoiGian_s > 0.02f ||
         !std::isfinite(heSoTyLeKp) || !std::isfinite(heSoTyLeKd) ||
@@ -186,6 +253,11 @@ float AnglePidController::update(float gocNghien_rad, float tocDoNghien_radps, f
     const float tocDoDaLoc_radps = _locGyroD.capNhat(tocDoNghien_radps, buocThoiGian_s, tanSoLocGyroD_hz);
 #endif
     const float saiLechGoc_rad = gocNghien_rad - gocMucTieu_rad;
+    if (dungMoSiso) {
+        _tichPhanGoc_rad_s = 0.0f;
+        _heSoPid = {0.0f, 0.0f, 0.0f};
+        return suyDienMoSiso(saiLechGoc_rad, _cauHinhMoSiso);
+    }
     const PidGains coSoThuan{_heSoPidThuan.heSoTiLe * tyLeKp, _heSoPidThuan.heSoTichPhan,
                              _heSoPidThuan.heSoViPhan * tyLeKd};
     const PidGains coSoMo{_heSoCoSo.heSoTiLe * tyLeKp, _heSoCoSo.heSoTichPhan,

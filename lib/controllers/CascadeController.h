@@ -11,7 +11,7 @@ public:
     void chotViTriGiuTaiCho();
     bool update(const TrangThaiXe& trangThaiXe, uint64_t thoiDiemHienTai_us, bool dungPidMo,
                 WheelStepCommand& lenhBanh, float vanTocYeuCau_mps = vanTocDat_mps,
-                float tocDoQuayYeuCau_radps = 0);
+                float tocDoQuayYeuCau_radps = 0, bool dungMoSiso = false);
     float gocDat_rad() const { return _gocDat_rad; }
     float gocDatHieuDung_rad() const {
 #if CAU_HINH_IMU == IMU_LSM6DSV_SPI
@@ -27,6 +27,8 @@ public:
     PidGains pidGocMoCoSo() const { return _boPidGoc.heSoCoSoMo(); }
     void setPidGocThuan(const PidGains& heSo) { _boPidGoc.setHeSoPidThuan(heSo); }
     void setPidGocMoCoSo(const PidGains& heSo) { _boPidGoc.setHeSoCoSoMo(heSo); }
+    CauHinhMoSiso cauHinhMoSiso() const { return _boPidGoc.cauHinhMoSiso(); }
+    bool setCauHinhMoSiso(const CauHinhMoSiso& cauHinh) { return _boPidGoc.setCauHinhMoSiso(cauHinh); }
     void setPidVanTocThuan(float kpV, float kiV);
     float kpVanTocThuan() const { return _kpVanTocPidThuan; }
     float kiVanTocThuan() const { return _kiVanTocPidThuan; }

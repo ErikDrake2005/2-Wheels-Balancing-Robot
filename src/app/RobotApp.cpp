@@ -24,7 +24,13 @@
 namespace {
 constexpr uint32_t suKienDinhKy = 1u, suKienBatDongCo = 2u, suKienTatDongCo = 4u, suKienDungKhan = 8u,
                    suKienXoaLoi = 16u, suKienDoiCheDoMo = 32u, suKienChonPidMo = 64u, suKienChonPidThuan = 128u,
-                   suKienResetXung = 256u;
+                   suKienResetXung = 256u, suKienChonMoSiso = 512u;
+const char* tenCheDoCtrl(bool dungPidMo, bool dungMoSiso) {
+    return dungMoSiso ? "FUZZY_SISO" : (dungPidMo ? "PID_MO" : "PID_THUAN");
+}
+uint8_t maCheDoCtrl(bool dungPidMo, bool dungMoSiso) {
+    return dungMoSiso ? 2u : (dungPidMo ? 1u : 0u);
+}
 constexpr const char* nvsNamespace = nvsCauHinhImu;
 constexpr uint32_t nvsMagic = 0x58434232u; // "XCB2"
 constexpr uint16_t soMauCalibImuTask = 2u * tanSoLayMauImu_hz;
@@ -136,7 +142,8 @@ bool RobotApp::begin() {
                 const float refLuu = dungLsm6dsv ? ::gocCanBang_rad : prefs.getFloat("ref_rad", ::gocCanBang_rad);
                 _cauHinhChay.gocCanBang_rad = dungProfileImuRieng && !std::isfinite(refLuu)
                     ? ::gocCanBang_rad : std::clamp(refLuu, -0.35f, 0.35f);
-                _cauHinhChay.dungPidMo = prefs.getBool("mode_mo", batPidMo);
+                _cauHinhChay.dungMoSiso = prefs.getBool("mode_siso", false);
+                _cauHinhChay.dungPidMo = _cauHinhChay.dungMoSiso ? false : prefs.getBool("mode_mo", batPidMo);
                 _cauHinhChay.daoChieuDongCo = prefs.getBool("inv_dir", false);
                 _coBiasLuu = prefs.getBool("gb_ok", false);
                 if (_coBiasLuu) {
@@ -322,6 +329,7 @@ bool RobotApp::begin() {
     trangThaiBanDau.trangThaiBoDieuKhienDongCo = _capDongCo.snapshot();
     trangThaiBanDau.khungXung = _boDemXung.read();
     trangThaiBanDau.dungPidMo = _cauHinhChay.dungPidMo;
+    trangThaiBanDau.dungMoSiso = _cauHinhChay.dungMoSiso;
     trangThaiBanDau.thoiDiemSnapshot_us = nowUs();
     xQueueOverwrite(_hangDoiTrangThaiDongCo, &trangThaiBanDau);
     if (xTaskCreatePinnedToCore(imuEntry, "Imu", 4096, this, 4, &_tacVuImu, 1) != pdPASS ||
@@ -380,7 +388,7 @@ bool RobotApp::begin() {
         inDongSerial("VIBLOG ERROR: khong tao duoc bo ghi log.");
     inDinhDangSerial("FIRMWARE %s; IMU=%s bus=%s busHz=%lu; NVS=%s; mode=%s\n",
         phienBanFirmware,tenImu,giaoTiepImu,static_cast<unsigned long>(tanSoBusImu_hz),
-        daNapNvs ? "LOADED" : "DEFAULT", _cauHinhChay.dungPidMo ? "PID_MO" : "PID_THUAN");
+        daNapNvs ? "LOADED" : "DEFAULT", tenCheDoCtrl(_cauHinhChay.dungPidMo, _cauHinhChay.dungMoSiso));
     if (khongDayOk || dieuKhienKhongDay.wifiSanSang() || dieuKhienKhongDay.espNowSanSang()) {
         inDinhDangSerial("WIFI_AP SSID=%s PASS=%s URL=http://%s | ESP_NOW=%s MAC=%s CH=%u\n",
                       tenMangWifiAp, matKhauWifiAp, dieuKhienKhongDay.diaChiIpAp(),
@@ -890,6 +898,28 @@ void RobotApp::controlLoop() {
     uint32_t soLanChotViTriTruoc = 0;
     uint32_t maResetXungTruoc = 0;
     uint64_t thoiDiemXungDaXuLy_us = 0;
+    uint32_t maBuocThuDaXuLy = 0;
+    bool buocThuDangChay = false;
+    uint8_t buocThuLoai = 0;
+    float buocThuGiaTri = 0.0f;
+    uint32_t buocThuMaPhien = 0;
+    uint64_t buocThuBatDau_us = 0;
+    uint64_t buocThuGiu_us = 0;
+    const auto ketThucBuocThu = [&](bool biHuy) {
+        if (!buocThuDangChay) return;
+        if (buocThuLoai == 2u) _boDieuKhienTang.setGocCanBang_rad(cauHinhDangDung.gocCanBang_rad);
+        KetQuaBuocThu kq{};
+        kq.maYeuCau = maBuocThuDaXuLy;
+        kq.hoanTat = true;
+        kq.biHuy = biHuy;
+        kq.loai = buocThuLoai;
+        kq.giaTri = buocThuGiaTri;
+        portENTER_CRITICAL(&_khoaBuocThu);
+        _ketQuaBuocThu = kq;
+        portEXIT_CRITICAL(&_khoaBuocThu);
+        buocThuDangChay = false;
+        buocThuLoai = 0;
+    };
     for (;;) {
         MauImuDaDoc mauDoc{};
         xQueueReceive(_hangDoiImu, &mauDoc, portMAX_DELAY);
@@ -942,30 +972,48 @@ void RobotApp::controlLoop() {
         baoCaoDieuKhien.maPhien = trangThaiDongCo.maPhien;
         baoCaoDieuKhien.phaDieuKhien = trangThaiDongCo.cheDo;
         baoCaoDieuKhien.dungPidMo = trangThaiDongCo.dungPidMo;
+        baoCaoDieuKhien.dungMoSiso = trangThaiDongCo.dungMoSiso;
         baoCaoDieuKhien.phienBanCauHinh = phienBanCauHinhTruoc;
         baoCaoDieuKhien.bench = _boDieuKhienTang.cheDoThuKhongMaSat();
-        baoCaoDieuKhien.vongNgoai = _boDieuKhienTang.batVongNgoai();
+        baoCaoDieuKhien.vongNgoai = _boDieuKhienTang.batVongNgoai() && !trangThaiDongCo.dungMoSiso;
         baoCaoDieuKhien.coThuNghiem = (cauHinhDangDung.buGiaTocImu ? 1u : 0u) |
             (_boDieuKhienTang.tangGiaTocDiChuyen() ? 2u : 0u) |
             (_boDieuKhienTang.tangBamVanTocDiChuyen() ? 4u : 0u);
-        baoCaoDieuKhien.heSoGocCoSo = trangThaiDongCo.dungPidMo ?
-            _boDieuKhienTang.pidGocMoCoSo() : _boDieuKhienTang.pidGocThuan();
-        baoCaoDieuKhien.kpVanTocCoSo = trangThaiDongCo.dungPidMo ?
-            _boDieuKhienTang.kpVanTocMo() : _boDieuKhienTang.kpVanTocThuan();
-        baoCaoDieuKhien.kiVanTocCoSo = trangThaiDongCo.dungPidMo ?
-            _boDieuKhienTang.kiVanTocMo() : _boDieuKhienTang.kiVanTocThuan();
+        baoCaoDieuKhien.heSoGocCoSo = trangThaiDongCo.dungMoSiso ? PidGains{0.0f, 0.0f, 0.0f}
+            : (trangThaiDongCo.dungPidMo ? _boDieuKhienTang.pidGocMoCoSo() : _boDieuKhienTang.pidGocThuan());
+        baoCaoDieuKhien.kpVanTocCoSo = trangThaiDongCo.dungMoSiso ? 0.0f
+            : (trangThaiDongCo.dungPidMo ? _boDieuKhienTang.kpVanTocMo() : _boDieuKhienTang.kpVanTocThuan());
+        baoCaoDieuKhien.kiVanTocCoSo = trangThaiDongCo.dungMoSiso ? 0.0f
+            : (trangThaiDongCo.dungPidMo ? _boDieuKhienTang.kiVanTocMo() : _boDieuKhienTang.kiVanTocThuan());
         baoCaoDieuKhien.soMauBoLo = khungDuLieu.soMauBoLo;
         baoCaoDieuKhien.soThongBaoTrung = khungDuLieu.soThongBaoTrung;
         baoCaoDieuKhien.soLanDocChongNgat = khungDuLieu.soLanDocChongNgat;
-        baoCaoDieuKhien.gocCanBang_rad = _boDieuKhienTang.gocCanBangThucTe_rad();
         const uint64_t thoiDiemHienTai_us = nowUs();
+        YeuCauBuocThu yeuCauBuoc{};
+        portENTER_CRITICAL(&_khoaBuocThu);
+        yeuCauBuoc = _yeuCauBuocThu;
+        portEXIT_CRITICAL(&_khoaBuocThu);
+        if (yeuCauBuoc.maYeuCau != 0 && yeuCauBuoc.maYeuCau != maBuocThuDaXuLy) {
+            if (buocThuDangChay) ketThucBuocThu(true);
+            maBuocThuDaXuLy = yeuCauBuoc.maYeuCau;
+            if (yeuCauBuoc.loai == 1u || yeuCauBuoc.loai == 2u) {
+                buocThuDangChay = true;
+                buocThuLoai = yeuCauBuoc.loai;
+                buocThuGiaTri = yeuCauBuoc.giaTri;
+                buocThuMaPhien = yeuCauBuoc.maPhien;
+                buocThuBatDau_us = thoiDiemHienTai_us;
+                buocThuGiu_us = static_cast<uint64_t>(yeuCauBuoc.giu_ms) * 1000ULL;
+            }
+        }
         baoCaoDieuKhien.loi = SafetyMonitor::check(
-            trangThaiXe, thoiDiemHienTai_us, _boDieuKhienTang.gocCanBangThucTe_rad());
-        // Cho phép luân chuyển êm (bumpless transfer) giữa PID_MO và PID_THUAN ngay cả khi đang cân bằng.
+            trangThaiXe, thoiDiemHienTai_us, cauHinhDangDung.gocCanBang_rad);
+        // Cho phép luân chuyển êm (bumpless transfer) giữa PID_THUAN, PID_MO và FUZZY_SISO ngay cả khi đang cân bằng.
         if (trangThaiDongCo.cheDo != CheDoCanBang::DangChay ||
             trangThaiDongCo.maPhien != maPhienTruoc ||
-            baoCaoDieuKhien.loi != FaultCode::None)
+            baoCaoDieuKhien.loi != FaultCode::None) {
+            ketThucBuocThu(true);
             _boDieuKhienTang.reset();
+        }
         maPhienTruoc = trangThaiDongCo.maPhien;
         LenhDiChuyen lenhDiChuyen{};
         xQueuePeek(_hangDoiDiChuyen, &lenhDiChuyen, 0);
@@ -979,9 +1027,39 @@ void RobotApp::controlLoop() {
             vanTocTuXa = trangThaiDongCo.cheDo == CheDoCanBang::DangChay ? vRadio : 0;
             quayTuXa = trangThaiDongCo.cheDo == CheDoCanBang::DangChay ? yawRadio : 0;
         }
+        bool buocThuDangCapLenh = false;
+        if (buocThuDangChay) {
+            const bool nguoiDungCanThiep = radioDieuKhien ||
+                (choDiChuyen && (std::fabs(lenhDiChuyen.vanToc_mps) > 1e-4f ||
+                                 std::fabs(lenhDiChuyen.tocDoQuay_radps) > 1e-4f));
+            if (trangThaiDongCo.maPhien != buocThuMaPhien || nguoiDungCanThiep) {
+                ketThucBuocThu(true);
+            } else {
+                constexpr uint64_t truocBuoc_us = 1000000ULL;
+                constexpr uint64_t sauBuoc_us = 1500000ULL;
+                const uint64_t daTroi_us = (thoiDiemHienTai_us >= buocThuBatDau_us)
+                    ? (thoiDiemHienTai_us - buocThuBatDau_us) : 0ULL;
+                if (daTroi_us >= truocBuoc_us + buocThuGiu_us + sauBuoc_us) {
+                    ketThucBuocThu(false);
+                } else if (daTroi_us >= truocBuoc_us && daTroi_us < truocBuoc_us + buocThuGiu_us) {
+                    if (buocThuLoai == 1u) {
+                        vanTocTuXa = buocThuGiaTri;
+                        quayTuXa = 0.0f;
+                        buocThuDangCapLenh = true;
+                    } else if (buocThuLoai == 2u) {
+                        _boDieuKhienTang.setGocCanBang_rad(cauHinhDangDung.gocCanBang_rad + buocThuGiaTri);
+                        buocThuDangCapLenh = true;
+                    }
+                } else {
+                    if (buocThuLoai == 1u) { vanTocTuXa = 0.0f; quayTuXa = 0.0f; }
+                    else if (buocThuLoai == 2u) { _boDieuKhienTang.setGocCanBang_rad(cauHinhDangDung.gocCanBang_rad); }
+                }
+            }
+        }
+        baoCaoDieuKhien.gocCanBang_rad = _boDieuKhienTang.gocCanBangThucTe_rad();
         if (baoCaoDieuKhien.loi == FaultCode::None &&
             !_boDieuKhienTang.update(trangThaiXe, thoiDiemHienTai_us, trangThaiDongCo.dungPidMo,
-                baoCaoDieuKhien.lenhBanh, vanTocTuXa, quayTuXa))
+                baoCaoDieuKhien.lenhBanh, vanTocTuXa, quayTuXa, trangThaiDongCo.dungMoSiso))
             baoCaoDieuKhien.loi = FaultCode::InvalidControl;
         baoCaoDieuKhien.heSoPid = _boDieuKhienTang.heSoPid();
         baoCaoDieuKhien.giaTocLenh_mps2 = _boDieuKhienTang.giaTocBanhDaLenh_mps2();
@@ -997,7 +1075,7 @@ void RobotApp::controlLoop() {
             sample.t_us = khungDuLieu.thoiDiemLayMau_us;
             sample.sample_seq = khungDuLieu.soMauLayDuoc;
             sample.cfg = phienBanCauHinhTruoc;
-            sample.mode = trangThaiDongCo.dungPidMo;
+            sample.mode = (trangThaiDongCo.dungPidMo || trangThaiDongCo.dungMoSiso) ? 1u : 0u;
             sample.diag_flags = baoCaoDieuKhien.coThuNghiem;
             sample.flags = (trangThaiDongCo.trangThaiBoDieuKhienDongCo.daBat ? KhaoSatRung::MotorOn : 0) |
                 (trangThaiXe.gocHopLe ? KhaoSatRung::AngleValid : 0);
@@ -1006,6 +1084,7 @@ void RobotApp::controlLoop() {
                 sample.command_age_us = thoiDiemHienTai_us - lenhDiChuyen.thoiDiem_us;
             const bool webConMoi = lenhDiChuyen.mucWeb.valid && sample.command_age_us < hanLenhDiChuyen_us;
             if (radioDieuKhien) sample.source = KhaoSatRung::Remote;
+            else if (buocThuDangCapLenh) sample.source = KhaoSatRung::Other;
             else if (webConMoi) {
                 sample.source = KhaoSatRung::Web;
                 sample.forward_pct = lenhDiChuyen.mucWeb.forward_pct;
@@ -1013,7 +1092,7 @@ void RobotApp::controlLoop() {
                 sample.speed_pct = lenhDiChuyen.mucWeb.speed_pct;
                 sample.flags |= KhaoSatRung::UiValid;
             } else sample.source = choDiChuyen ? KhaoSatRung::Other : KhaoSatRung::None;
-            if (choDiChuyen && !radioDieuKhien) sample.flags |= KhaoSatRung::CommandValid;
+            if ((choDiChuyen || buocThuDangCapLenh) && !radioDieuKhien) sample.flags |= KhaoSatRung::CommandValid;
             sample.ax = khungDuLieu.giaTocX_mps2; sample.ay = khungDuLieu.giaTocY_mps2;
             sample.az = khungDuLieu.giaTocZ_mps2;
             sample.gx = khungDuLieu.tocDoGocX_radps; sample.gy = khungDuLieu.tocDoGocY_radps;
@@ -1036,8 +1115,10 @@ void RobotApp::motorLoop() {
     CauHinhChay cauHinhBanDau{};
     if (xQueuePeek(_hangDoiCauHinh, &cauHinhBanDau, 0) == pdTRUE) {
         baoCaoDongCo.dungPidMo = cauHinhBanDau.dungPidMo;
+        baoCaoDongCo.dungMoSiso = cauHinhBanDau.dungMoSiso;
     } else {
         baoCaoDongCo.dungPidMo = batPidMo;
+        baoCaoDongCo.dungMoSiso = false;
     }
     bool daoChieuDongCoTruoc = cauHinhBanDau.daoChieuDongCo;
     bool tamDungUartTruoc = cauHinhBanDau.khoaMotorCalib;
@@ -1126,14 +1207,27 @@ void RobotApp::motorLoop() {
             : FaultCode::ImuInvalid;
         if (loiAnToan == FaultCode::None) loiAnToan = baoCaoDieuKhien.loi;
 
-        // Luân chuyển giữa 2 chế độ độc lập: PID Mờ (Mamdani) và PID Thuần (cố định)
-        // có hiệu lực ngay cả khi động cơ đang tắt hoặc đang chạy cân bằng (bumpless).
-        if (cacSuKien & suKienDoiCheDoMo) {
-            baoCaoDongCo.dungPidMo = !baoCaoDongCo.dungPidMo;
+        // Luân chuyển giữa 3 chế độ độc lập: PID Thuần, PID Mờ (Mamdani), và Mờ SISO trực tiếp (bumpless).
+        if (cacSuKien & suKienChonMoSiso) {
+            baoCaoDongCo.dungMoSiso = true;
+            baoCaoDongCo.dungPidMo = false;
         } else if (cacSuKien & suKienChonPidMo) {
+            baoCaoDongCo.dungMoSiso = false;
             baoCaoDongCo.dungPidMo = true;
         } else if (cacSuKien & suKienChonPidThuan) {
+            baoCaoDongCo.dungMoSiso = false;
             baoCaoDongCo.dungPidMo = false;
+        } else if (cacSuKien & suKienDoiCheDoMo) {
+            if (!baoCaoDongCo.dungPidMo && !baoCaoDongCo.dungMoSiso) {
+                baoCaoDongCo.dungPidMo = true;
+                baoCaoDongCo.dungMoSiso = false;
+            } else if (baoCaoDongCo.dungPidMo) {
+                baoCaoDongCo.dungPidMo = false;
+                baoCaoDongCo.dungMoSiso = true;
+            } else {
+                baoCaoDongCo.dungPidMo = false;
+                baoCaoDongCo.dungMoSiso = false;
+            }
         }
 
         if (giaiDoanTest != 0) {
@@ -1325,6 +1419,7 @@ void RobotApp::apDungCauHinh(const CauHinhChay& cauHinh) {
     _boDieuKhienTang.setPidGocMoCoSo({cauHinh.kpGocMo, cauHinh.kiGocMo, cauHinh.kdGocMo});
     _boDieuKhienTang.setPidVanTocThuan(cauHinh.kpVanTocThuan, cauHinh.kiVanTocThuan);
     _boDieuKhienTang.datPidVanTocMo(cauHinh.kpVanTocMo, cauHinh.kiVanTocMo);
+    _boDieuKhienTang.setCauHinhMoSiso(cauHinh.cauHinhMoSiso);
     _boDieuKhienTang.setGocCanBang_rad(cauHinh.gocCanBang_rad);
     _boDieuKhienTang.setCheDoThuKhongMaSat(cauHinh.cheDoThuKhongMaSat);
     _boDieuKhienTang.setBatVongNgoai(cauHinh.batVongNgoai);
@@ -1384,6 +1479,7 @@ bool RobotApp::luuCauHinhVaoNvs() {
         luuFloat("ref_rad", _cauHinhChay.gocCanBang_rad);
     }
     ok &= prefs.putBool("mode_mo", _cauHinhChay.dungPidMo) == 1;
+    ok &= prefs.putBool("mode_siso", _cauHinhChay.dungMoSiso) == 1;
     ok &= prefs.putBool("inv_dir", _cauHinhChay.daoChieuDongCo) == 1;
     ok &= prefs.putBool("gb_ok", _coBiasLuu) == 1;
     if (_coBiasLuu) {
@@ -1398,8 +1494,9 @@ bool RobotApp::luuCauHinhVaoNvs() {
 
 void RobotApp::inTroGiup() {
     inDinhDangSerial("FIRMWARE %s\n", phienBanFirmware);
-    inDongSerial("Dieu khien: a=arm; d=disable; x=emergency; k=clear fault; p=PID_THUAN; m=PID_MO; f=dao mode");
+    inDongSerial("Dieu khien: a=arm; d=disable; x=emergency; k=clear fault; p=PID_THUAN; m=PID_MO; u=FUZZY_SISO; f=dao mode");
     inDongSerial("Di chuyen (khi arm): w/s=tien/lui; j/l=trai/phai; z=dung; g=chot giu vi tri tai cho");
+    inDongSerial("Buoc thu chuan (khi arm): vstep <m/s> [ms]; angstep <deg> [ms]; stepstop");
     inDongSerial("Calib & Bench: c=calib khoa hoc 2s (gyro+pitch+NVS); o=zero nhanh pitch+odo; [/]=trim -/+0.1deg");
     if (dungLsm6dsv) inDongSerial("Calib dung LSM: cal1 +x/-x/+y/-y/+z/-z (truc sensor chi ve DAU xe), giu dung yen.");
     if (dungProfileImuRieng)
@@ -1407,7 +1504,7 @@ void RobotApp::inTroGiup() {
     inDongSerial("Test banh cham (bench 1, nhac banh): mtest 0 | l+ | l- | r+ | r- | + | -");
     inDongSerial("               b=bat/tat Bench Mode (nhac banh khong ma sat); v=bat/tat vong van toc/vi tri");
     inDongSerial("Chinh PID (kem Enter): kp X; ki X; kd X; kpv X; kiv X; kpv_p X; kpv_m X; ref X(rad); refdeg X(deg); bench 0|1; vloop 0|1; daochieu [0|1]");
-    inDongSerial("Lenh khac: pid|fuzzy|mode pid|fuzzy; giuvitri; save=luu NVS; resetcfg=xoa NVS; status=xem cau hinh; t=stream; tw=web stream; i=RAW_IMU");
+    inDongSerial("Lenh khac: pid|fuzzy|siso|mode pid|fuzzy|siso; sisocfg [eMax c1 c2 u1 u2 | reset]; vstep <m/s> [ms]; angstep <deg> [ms]; stepstop; giuvitri; save; resetcfg; status; t; tw; i");
     inDongSerial("research 1 = bat CSV NC 50 Hz; research 0 = tat CSV. Thoi gian nguon IMU tinh bang micro giay.");
     inDongSerial("radio peer AA:BB:CC:DD:EE:FF = ghep cau noi ESP-NOW (motor tat); radio status = xem peer.");
     inDongSerial("A/B RAM (motor tat): imucomp 0|1; accelboost 0|1; vgainboost 0|1. Khoi dong lai ve mac dinh; save khong luu cac co nay.");
@@ -1445,7 +1542,7 @@ void RobotApp::inTrangThaiChiTiet() {
     inDinhDangSerial("AB_RAM imucomp=%d accelboost=%d vgainboost=%d\n", _cauHinhChay.buGiaTocImu,
         _cauHinhChay.tangGiaTocDiChuyen, _cauHinhChay.tangBamVanTocDiChuyen);
     inDinhDangSerial("Mode=%s EN=%d fault=%s bench=%d vloop=%d invDir=%d telemetry=%d tw=%d research=%d\n",
-                  _cauHinhChay.dungPidMo ? "PID_MO" : "PID_THUAN",
+                  tenCheDoCtrl(_cauHinhChay.dungPidMo, _cauHinhChay.dungMoSiso),
                   baoCaoDongCo.trangThaiBoDieuKhienDongCo.daBat,
                   faultName(baoCaoDongCo.loi),
                   _cauHinhChay.cheDoThuKhongMaSat ? 1 : 0,
@@ -1459,6 +1556,10 @@ void RobotApp::inTrangThaiChiTiet() {
     inDinhDangSerial("PID_MO base: Kp=%.3f Ki=%.3f Kd=%.3f | Kpv=%.4f Kiv=%.4f\n",
                   _cauHinhChay.kpGocMo, _cauHinhChay.kiGocMo, _cauHinhChay.kdGocMo,
                   _cauHinhChay.kpVanTocMo, _cauHinhChay.kiVanTocMo);
+    const auto& siso = _cauHinhChay.cauHinhMoSiso;
+    inDinhDangSerial("FUZZY_SISO: 1-in 7-rule E_max=%.3frad c1=%.2f c2=%.2f u1=%.2f u2=%.2f Ku=%.2fm/s2 (vloop=OFF_AUTO)\n",
+                  static_cast<double>(siso.eMax_rad), static_cast<double>(siso.c1), static_cast<double>(siso.c2),
+                  static_cast<double>(siso.u1), static_cast<double>(siso.u2), static_cast<double>(siso.ku_mps2));
     inDinhDangSerial("Equilibrium: ref=%.5frad (%.2fdeg) | IMU_biasOk=%d (%.3f,%.3f,%.3f dps)\n",
                   _cauHinhChay.gocCanBang_rad, _cauHinhChay.gocCanBang_rad * doiRadSangDo,
                   _coBiasLuu ? 1 : 0, _biasX_dps, _biasY_dps, _biasZ_dps);
@@ -1553,16 +1654,28 @@ void RobotApp::xuLyPhimDonSerial(char kyTu) {
     case 'x': xTaskNotify(_tacVuDongCo, suKienDungKhan, eSetBits); break;
     case 'k': xTaskNotify(_tacVuDongCo, suKienXoaLoi, eSetBits); break;
     case 'f':
-        _cauHinhChay.dungPidMo = !_cauHinhChay.dungPidMo;
+        if (!_cauHinhChay.dungPidMo && !_cauHinhChay.dungMoSiso) {
+            _cauHinhChay.dungPidMo = true;
+            _cauHinhChay.dungMoSiso = false;
+        } else if (_cauHinhChay.dungPidMo) {
+            _cauHinhChay.dungPidMo = false;
+            _cauHinhChay.dungMoSiso = true;
+        } else {
+            _cauHinhChay.dungPidMo = false;
+            _cauHinhChay.dungMoSiso = false;
+        }
         ++_cauHinhChay.phienBan;
         xQueueOverwrite(_hangDoiCauHinh, &_cauHinhChay);
         xTaskNotify(_tacVuDongCo,
-                    _cauHinhChay.dungPidMo ? suKienChonPidMo : suKienChonPidThuan,
+                    _cauHinhChay.dungMoSiso ? suKienChonMoSiso
+                        : (_cauHinhChay.dungPidMo ? suKienChonPidMo : suKienChonPidThuan),
                     eSetBits);
-        inDinhDangSerial("[CTRL] Dao che do -> %s\n", _cauHinhChay.dungPidMo ? "PID_MO" : "PID_THUAN");
+        inDinhDangSerial("[CTRL] Dao che do -> %s\n",
+                         tenCheDoCtrl(_cauHinhChay.dungPidMo, _cauHinhChay.dungMoSiso));
         break;
     case 'm':
         _cauHinhChay.dungPidMo = true;
+        _cauHinhChay.dungMoSiso = false;
         _cauHinhChay.cheDoThuKhongMaSat = false;
         _cauHinhChay.batVongNgoai = true;
         ++_cauHinhChay.phienBan;
@@ -1572,6 +1685,7 @@ void RobotApp::xuLyPhimDonSerial(char kyTu) {
         break;
     case 'p':
         _cauHinhChay.dungPidMo = false;
+        _cauHinhChay.dungMoSiso = false;
         _cauHinhChay.cheDoThuKhongMaSat = false;
         _cauHinhChay.batVongNgoai = true;
         ++_cauHinhChay.phienBan;
@@ -1579,6 +1693,21 @@ void RobotApp::xuLyPhimDonSerial(char kyTu) {
         xTaskNotify(_tacVuDongCo, suKienChonPidThuan, eSetBits);
         inDongSerial("[CTRL] Chon che do: PID_THUAN (Can bang banh xe, Bench=OFF, VongViTri=ON)");
         break;
+    case 'u': {
+        _cauHinhChay.dungPidMo = false;
+        _cauHinhChay.dungMoSiso = true;
+        _cauHinhChay.cheDoThuKhongMaSat = false;
+        _cauHinhChay.batVongNgoai = true;
+        ++_cauHinhChay.phienBan;
+        xQueueOverwrite(_hangDoiCauHinh, &_cauHinhChay);
+        xTaskNotify(_tacVuDongCo, suKienChonMoSiso, eSetBits);
+        const auto& siso = _cauHinhChay.cauHinhMoSiso;
+        inDinhDangSerial("[CTRL] Chon che do: FUZZY_SISO (1-in 7-rule E_max=%.2frad c=%.2f/%.2f u=%.2f/%.2f Ku=%.1fm/s2)\n",
+                         static_cast<double>(siso.eMax_rad), static_cast<double>(siso.c1),
+                         static_cast<double>(siso.c2), static_cast<double>(siso.u1),
+                         static_cast<double>(siso.u2), static_cast<double>(siso.ku_mps2));
+        break;
+    }
     case 'b':
         _cauHinhChay.cheDoThuKhongMaSat = !_cauHinhChay.cheDoThuKhongMaSat;
         _cauHinhChay.batVongNgoai = !_cauHinhChay.cheDoThuKhongMaSat;
@@ -1815,6 +1944,61 @@ void RobotApp::xuLyDongLenhSerial(const char* dongLenh) {
     if (std::strcmp(banSao, "giuvitri") == 0) { xuLyPhimDonSerial('g'); return; }
     if (std::strcmp(banSao, "pid") == 0 || std::strcmp(banSao, "pid_thuan") == 0) { xuLyPhimDonSerial('p'); return; }
     if (std::strcmp(banSao, "fuzzy") == 0 || std::strcmp(banSao, "pid_mo") == 0) { xuLyPhimDonSerial('m'); return; }
+    if (std::strcmp(banSao, "siso") == 0 || std::strcmp(banSao, "fuzzy_siso") == 0) { xuLyPhimDonSerial('u'); return; }
+    if (std::strcmp(banSao, "stepstop") == 0) {
+        portENTER_CRITICAL(&_khoaBuocThu);
+        ++_yeuCauBuocThu.maYeuCau;
+        _yeuCauBuocThu.loai = 0;
+        portEXIT_CRITICAL(&_khoaBuocThu);
+        inDongSerial("[STEP] Da gui lenh dung buoc thu.");
+        return;
+    }
+    if (std::strncmp(banSao, "vstep ", 6) == 0 || std::strncmp(banSao, "angstep ", 8) == 0) {
+        const bool laVstep = (banSao[0] == 'v');
+        float giaTriBuoc = 0.0f;
+        unsigned long giuMs = laVstep ? 2500ul : 1500ul;
+        const int soDoc = std::sscanf(banSao + (laVstep ? 6 : 8), "%f %lu", &giaTriBuoc, &giuMs);
+        if (soDoc < 1 || !std::isfinite(giaTriBuoc)) {
+            inDongSerial(laVstep ? "[STEP] Dung: vstep <m/s> [hold_ms] (vd: vstep 0.25 2500)"
+                                 : "[STEP] Dung: angstep <deg> [hold_ms] (vd: angstep 2.0 1500)");
+            return;
+        }
+        if (trangThaiDongCo.cheDo != CheDoCanBang::DangChay || !trangThaiDongCo.trangThaiBoDieuKhienDongCo.daBat) {
+            inDongSerial("[STEP] Can bat can bang (EN=1) truoc khi chay buoc thu.");
+            return;
+        }
+        if (laVstep && trangThaiDongCo.dungMoSiso) {
+            inDongSerial("[STEP] FUZZY_SISO 1 vao khong dung vong van toc; hay dung 'angstep <deg> [ms]' hoac doi sang PID/PID_MO.");
+            return;
+        }
+        if (laVstep && (_cauHinhChay.cheDoThuKhongMaSat || !_cauHinhChay.batVongNgoai)) {
+            inDongSerial("[STEP] vstep can bench=0 va vloop=1.");
+            return;
+        }
+        if (laVstep) {
+            giaTriBuoc = std::clamp(giaTriBuoc, -vanTocDiChuyenToiDa_mps, vanTocDiChuyenToiDa_mps);
+            if (std::fabs(giaTriBuoc) < 0.02f) { inDongSerial("[STEP] |vstep| phai >= 0.02 m/s."); return; }
+            giuMs = std::clamp<unsigned long>(giuMs, 300ul, 6000ul);
+        } else {
+            giaTriBuoc = std::clamp(giaTriBuoc, -6.0f, 6.0f);
+            if (std::fabs(giaTriBuoc) < 0.2f) { inDongSerial("[STEP] |angstep| phai >= 0.2 deg."); return; }
+            giuMs = std::clamp<unsigned long>(giuMs, 300ul, 4000ul);
+        }
+        portENTER_CRITICAL(&_khoaBuocThu);
+        YeuCauBuocThu yc = _yeuCauBuocThu;
+        ++yc.maYeuCau;
+        yc.maPhien = trangThaiDongCo.maPhien;
+        yc.loai = laVstep ? 1u : 2u;
+        yc.giaTri = laVstep ? giaTriBuoc : (giaTriBuoc * doiDoSangRad);
+        yc.giu_ms = static_cast<uint32_t>(giuMs);
+        _yeuCauBuocThu = yc;
+        portEXIT_CRITICAL(&_khoaBuocThu);
+        _dangChoBuocThu = true;
+        inDinhDangSerial("[STEP] START %s val=%.2f%s pre=1000ms hold=%lums post=1500ms ctrl=%s\n",
+            laVstep ? "vstep" : "angstep", static_cast<double>(giaTriBuoc), laVstep ? "m/s" : "deg",
+            giuMs, tenCheDoCtrl(trangThaiDongCo.dungPidMo, trangThaiDongCo.dungMoSiso));
+        return;
+    }
     if (std::strcmp(banSao, "banh") == 0 || std::strcmp(banSao, "banhxe") == 0) {
         _cauHinhChay.cheDoThuKhongMaSat = false;
         _cauHinhChay.batVongNgoai = true;
@@ -1897,8 +2081,10 @@ void RobotApp::xuLyDongLenhSerial(const char* dongLenh) {
             xuLyPhimDonSerial('p');
         } else if (std::strcmp(thamSo, "fuzzy") == 0 || std::strcmp(thamSo, "m") == 0 || std::strcmp(thamSo, "pid_mo") == 0) {
             xuLyPhimDonSerial('m');
+        } else if (std::strcmp(thamSo, "siso") == 0 || std::strcmp(thamSo, "u") == 0 || std::strcmp(thamSo, "fuzzy_siso") == 0) {
+            xuLyPhimDonSerial('u');
         } else {
-            inDongSerial("[CMD] Dung: mode pid | mode fuzzy");
+            inDongSerial("[CMD] Dung: mode pid | mode fuzzy | mode siso");
         }
         return;
     }
@@ -1996,6 +2182,42 @@ void RobotApp::xuLyDongLenhSerial(const char* dongLenh) {
         else capNhatThongSo("PID_THUAN Kd", _cauHinhChay.kdGocThuan, 0.0f, 50.0f);
         return;
     }
+    if (std::strcmp(banSao, "sisocfg") == 0) {
+        const auto& siso = _cauHinhChay.cauHinhMoSiso;
+        inDinhDangSerial("[SISO] 1-in 7-rule eMax=%.3f c1=%.2f c2=%.2f u1=%.2f u2=%.2f ku=%.2f\n",
+                         static_cast<double>(siso.eMax_rad), static_cast<double>(siso.c1),
+                         static_cast<double>(siso.c2), static_cast<double>(siso.u1),
+                         static_cast<double>(siso.u2), static_cast<double>(siso.ku_mps2));
+        return;
+    }
+    if (std::strcmp(banSao, "sisocfg reset") == 0) {
+        _cauHinhChay.cauHinhMoSiso = CauHinhMoSiso{};
+        ++_cauHinhChay.phienBan;
+        xQueueOverwrite(_hangDoiCauHinh, &_cauHinhChay);
+        const auto& siso = _cauHinhChay.cauHinhMoSiso;
+        inDinhDangSerial("[SISO] Reset mac dinh: eMax=%.3f c1=%.2f c2=%.2f u1=%.2f u2=%.2f ku=%.2f\n",
+                         static_cast<double>(siso.eMax_rad), static_cast<double>(siso.c1),
+                         static_cast<double>(siso.c2), static_cast<double>(siso.u1),
+                         static_cast<double>(siso.u2), static_cast<double>(siso.ku_mps2));
+        return;
+    }
+    if (std::strncmp(banSao, "sisocfg ", 8) == 0) {
+        CauHinhMoSiso moi = _cauHinhChay.cauHinhMoSiso;
+        const int nDoc = std::sscanf(banSao + 8, "%f %f %f %f %f %f",
+                                     &moi.eMax_rad, &moi.c1, &moi.c2, &moi.u1, &moi.u2, &moi.ku_mps2);
+        if (nDoc < 5 || !AnglePidController::cauHinhMoSisoHopLe(moi)) {
+            inDongSerial("[SISO] Cu phap: sisocfg <eMax(0.05..0.45)> <c1> <c2> <u1> <u2> [ku(0.5..3.0)] | reset");
+            return;
+        }
+        _cauHinhChay.cauHinhMoSiso = moi;
+        ++_cauHinhChay.phienBan;
+        xQueueOverwrite(_hangDoiCauHinh, &_cauHinhChay);
+        inDinhDangSerial("[SISO] Cap nhat: eMax=%.3f c1=%.2f c2=%.2f u1=%.2f u2=%.2f ku=%.2f\n",
+                         static_cast<double>(moi.eMax_rad), static_cast<double>(moi.c1),
+                         static_cast<double>(moi.c2), static_cast<double>(moi.u1),
+                         static_cast<double>(moi.u2), static_cast<double>(moi.ku_mps2));
+        return;
+    }
     int txDbm = 0;
     if (std::sscanf(banSao, "wifipwr %d", &txDbm) == 1) {
         if (dieuKhienKhongDay.datCongSuatWifi(txDbm)) {
@@ -2054,7 +2276,8 @@ void RobotApp::dienTrangThaiWeb(ThongTinTrangThaiWeb& trangThaiRa) {
         baoCaoDieuKhien.trangThaiXe.thoiDiemGoc_us <= thoiDiemHienTai &&
         thoiDiemHienTai - baoCaoDieuKhien.trangThaiXe.thoiDiemGoc_us < tuoiImuToiDa_us;
 
-    const bool dangMo = _cauHinhChay.dungPidMo;
+    const bool dangMo = _cauHinhChay.dungPidMo && !_cauHinhChay.dungMoSiso;
+    const bool dangMoSiso = _cauHinhChay.dungMoSiso;
     trangThaiRa.daBat = baoCaoDongCo.trangThaiBoDieuKhienDongCo.daBat;
     trangThaiRa.dangChayPidMo = dangMo;
     trangThaiRa.cheDoNangBanh = _cauHinhChay.cheDoThuKhongMaSat;
@@ -2074,9 +2297,9 @@ void RobotApp::dienTrangThaiWeb(ThongTinTrangThaiWeb& trangThaiRa) {
     trangThaiRa.xungBanhPhai = baoCaoDongCo.khungXung.phai;
     trangThaiRa.encoderTrai = baoCaoDongCo.khungXung.encoderTrai;
     trangThaiRa.encoderPhai = baoCaoDongCo.khungXung.encoderPhai;
-    trangThaiRa.kpGoc = dangMo ? _cauHinhChay.kpGocMo : _cauHinhChay.kpGocThuan;
-    trangThaiRa.kiGoc = dangMo ? _cauHinhChay.kiGocMo : _cauHinhChay.kiGocThuan;
-    trangThaiRa.kdGoc = dangMo ? _cauHinhChay.kdGocMo : _cauHinhChay.kdGocThuan;
+    trangThaiRa.kpGoc = dangMoSiso ? 0.0f : (dangMo ? _cauHinhChay.kpGocMo : _cauHinhChay.kpGocThuan);
+    trangThaiRa.kiGoc = dangMoSiso ? 0.0f : (dangMo ? _cauHinhChay.kiGocMo : _cauHinhChay.kiGocThuan);
+    trangThaiRa.kdGoc = dangMoSiso ? 0.0f : (dangMo ? _cauHinhChay.kdGocMo : _cauHinhChay.kdGocThuan);
     trangThaiRa.kpVanToc = dangMo ? _cauHinhChay.kpVanTocMo : _cauHinhChay.kpVanTocThuan;
     trangThaiRa.kiVanToc = dangMo ? _cauHinhChay.kiVanTocMo : _cauHinhChay.kiVanTocThuan;
     trangThaiRa.kpHieuDung = baoCaoDieuKhien.heSoPid.heSoTiLe;
@@ -2087,7 +2310,7 @@ void RobotApp::dienTrangThaiWeb(ThongTinTrangThaiWeb& trangThaiRa) {
     const char* tenSanSangChuoi = _cauHinhChay.khoaMotorCalib ? "need_mount_calib" : faultName(loiHienTai);
     std::snprintf(trangThaiRa.tenSanSang, sizeof(trangThaiRa.tenSanSang), "%s", tenSanSangChuoi);
     std::snprintf(trangThaiRa.cheDoDieuKhien, sizeof(trangThaiRa.cheDoDieuKhien), "%s",
-                  dangMo ? "PID_MO" : "PID_THUAN");
+                  tenCheDoCtrl(_cauHinhChay.dungPidMo, _cauHinhChay.dungMoSiso));
 }
 
 void RobotApp::guiChanDoanEspNow() {
@@ -2104,7 +2327,7 @@ void RobotApp::guiChanDoanEspNow() {
     t.t_us = c.khungCamBien.thoiDiemLayMau_us; t.motor_us = m.thoiDiemSnapshot_us;
     t.sample_seq = c.khungCamBien.soMauLayDuoc; t.control_seq = c.soThuTuLenh; t.cfg = c.phienBanCauHinh;
     t.control_session = c.maPhien; t.motor_session = m.maPhien;
-    t.en = m.trangThaiBoDieuKhienDongCo.daBat; t.mode = c.dungPidMo;
+    t.en = m.trangThaiBoDieuKhienDongCo.daBat; t.mode = maCheDoCtrl(c.dungPidMo, c.dungMoSiso);
     t.control_fault = static_cast<uint8_t>(c.loi); t.motor_fault = static_cast<uint8_t>(m.loi);
     t.control_phase = static_cast<uint8_t>(c.phaDieuKhien); t.motor_phase = static_cast<uint8_t>(m.cheDo);
     t.angle_valid = c.trangThaiXe.gocHopLe && c.trangThaiXe.thoiDiemGoc_us &&
@@ -2156,11 +2379,11 @@ void RobotApp::capNhatThongTinLogRung() {
     info.filter_flags = (lsm6dsv::batLocGyroLpf1 ? 1u : 0u) | (lsm6dsv::batLocGiaTocLpf2 ? 2u : 0u);
     info.accel_range_g = lsm6dsv::phamViGiaToc_g; info.gyro_range_dps = lsm6dsv::phamViGyro_dps;
     info.eq = _cauHinhChay.gocCanBang_rad;
-    info.kp = _cauHinhChay.dungPidMo ? _cauHinhChay.kpGocMo : _cauHinhChay.kpGocThuan;
-    info.ki = _cauHinhChay.dungPidMo ? _cauHinhChay.kiGocMo : _cauHinhChay.kiGocThuan;
-    info.kd = _cauHinhChay.dungPidMo ? _cauHinhChay.kdGocMo : _cauHinhChay.kdGocThuan;
-    info.kpv = _cauHinhChay.dungPidMo ? _cauHinhChay.kpVanTocMo : _cauHinhChay.kpVanTocThuan;
-    info.kiv = _cauHinhChay.dungPidMo ? _cauHinhChay.kiVanTocMo : _cauHinhChay.kiVanTocThuan;
+    info.kp = _cauHinhChay.dungMoSiso ? 0.0f : (_cauHinhChay.dungPidMo ? _cauHinhChay.kpGocMo : _cauHinhChay.kpGocThuan);
+    info.ki = _cauHinhChay.dungMoSiso ? 0.0f : (_cauHinhChay.dungPidMo ? _cauHinhChay.kiGocMo : _cauHinhChay.kiGocThuan);
+    info.kd = _cauHinhChay.dungMoSiso ? 0.0f : (_cauHinhChay.dungPidMo ? _cauHinhChay.kdGocMo : _cauHinhChay.kdGocThuan);
+    info.kpv = (_cauHinhChay.dungPidMo && !_cauHinhChay.dungMoSiso) ? _cauHinhChay.kpVanTocMo : _cauHinhChay.kpVanTocThuan;
+    info.kiv = (_cauHinhChay.dungPidMo && !_cauHinhChay.dungMoSiso) ? _cauHinhChay.kiVanTocMo : _cauHinhChay.kiVanTocThuan;
     info.fusion_tau = hangSoThoiGianLocGoc_s; info.d_lpf_hz = tanSoLocGyroD_hz;
     info.gyro_bias[0] = _biasX_dps; info.gyro_bias[1] = _biasY_dps; info.gyro_bias[2] = _biasZ_dps;
     info.trust_norm = saiLechGiaTocChoPhep_mps2;
@@ -2219,15 +2442,16 @@ void RobotApp::ghiMauNghienCuu() {
         return doDai > 0 && static_cast<size_t>(doDai) < sizeof(dong) &&
                _nhatKyNghienCuu.them(dong, static_cast<size_t>(doDai));
     };
-    if (_canCauHinhNghienCuu || c.phienBanCauHinh != _phienBanDaGhi || c.dungPidMo != _cheDoMoDaGhi) {
-        const int doDai = std::snprintf(dong, sizeof(dong), "NC_CFG,%lu,%d,%.7g,%.7g,%.7g,%.7g,%.7g,%d,%d\n",
-            static_cast<unsigned long>(c.phienBanCauHinh), c.dungPidMo,
+    const uint8_t maCheDo = maCheDoCtrl(c.dungPidMo, c.dungMoSiso);
+    if (_canCauHinhNghienCuu || c.phienBanCauHinh != _phienBanDaGhi || maCheDo != _cheDoDieuKhienDaGhi) {
+        const int doDai = std::snprintf(dong, sizeof(dong), "NC_CFG,%lu,%u,%.7g,%.7g,%.7g,%.7g,%.7g,%d,%d\n",
+            static_cast<unsigned long>(c.phienBanCauHinh), static_cast<unsigned>(maCheDo),
             c.heSoGocCoSo.heSoTiLe, c.heSoGocCoSo.heSoTichPhan, c.heSoGocCoSo.heSoViPhan,
             c.kpVanTocCoSo, c.kiVanTocCoSo, c.bench, c.vongNgoai);
         if (!ghiDong(doDai)) { ++_soMauNghienCuuBo; return; }
         _canCauHinhNghienCuu = false;
         _phienBanDaGhi = c.phienBanCauHinh;
-        _cheDoMoDaGhi = c.dungPidMo;
+        _cheDoDieuKhienDaGhi = maCheDo;
     }
     const auto& xe = c.trangThaiXe;
     const auto& imu = c.khungCamBien;
@@ -2235,11 +2459,11 @@ void RobotApp::ghiMauNghienCuu() {
     const long long tuoi_us = xe.thoiDiemGoc_us && lucLay_us >= xe.thoiDiemGoc_us
         ? static_cast<long long>(lucLay_us - xe.thoiDiemGoc_us) : -1;
     const int doDai = std::snprintf(dong, sizeof(dong),
-        "NC,%llu,%lu,%lu,%lu,%lu,%u,%d,%u,%d,%llu,%lu,%u,%d,%u,"
+        "NC,%llu,%lu,%lu,%lu,%lu,%u,%u,%u,%d,%llu,%lu,%u,%d,%u,"
         "%.7g,%.7g,%.7g,%.7g,%.7g,%.6g,%.6g,%.6g,%.7g,%.7g,%.6g,%.6g,%.6g,%llu,%lld,%lu,%lu,%lu,%.7g,%u\n",
         static_cast<unsigned long long>(imu.thoiDiemLayMau_us), static_cast<unsigned long>(imu.soMauLayDuoc),
         static_cast<unsigned long>(c.soThuTuLenh), static_cast<unsigned long>(c.phienBanCauHinh),
-        static_cast<unsigned long>(c.maPhien), static_cast<unsigned>(c.phaDieuKhien), c.dungPidMo,
+        static_cast<unsigned long>(c.maPhien), static_cast<unsigned>(c.phaDieuKhien), static_cast<unsigned>(maCheDo),
         static_cast<unsigned>(c.loi), xe.gocHopLe && tuoi_us >= 0 && tuoi_us < tuoiImuToiDa_us,
         static_cast<unsigned long long>(m.thoiDiemSnapshot_us), static_cast<unsigned long>(m.maPhien),
         static_cast<unsigned>(m.cheDo), m.trangThaiBoDieuKhienDongCo.daBat, static_cast<unsigned>(m.loi),
@@ -2596,6 +2820,19 @@ void RobotApp::loop() {
                 _cauHinhChay.daoChieuDongCo ? 1 : 0);
         }
     }
+    if (_dangChoBuocThu) {
+        KetQuaBuocThu kqBuoc{};
+        portENTER_CRITICAL(&_khoaBuocThu);
+        kqBuoc = _ketQuaBuocThu;
+        portEXIT_CRITICAL(&_khoaBuocThu);
+        if (kqBuoc.hoanTat && kqBuoc.maYeuCau != _maKetQuaBuocThuDaIn) {
+            _maKetQuaBuocThuDaIn = kqBuoc.maYeuCau;
+            _dangChoBuocThu = false;
+            inDinhDangSerial("[STEP] %s %s\n",
+                kqBuoc.loai == 1u ? "vstep" : "angstep",
+                kqBuoc.biHuy ? "ABORT" : "DONE");
+        }
+    }
     guiChanDoanEspNow();
     capNhatThongTinLogRung();
     if (_dangPhatNghienCuu) ghiMauNghienCuu();
@@ -2652,7 +2889,7 @@ void RobotApp::loop() {
             dieuKhienKhongDay.ghiNhatKyDinhDang(
                 "EN=%d ctrl=%s fault=%s thetaDeg=%.2f targetDeg=%.2f x=%.4f v=%.4f STEP=%lld,%lld mksL=0x%02X:%lu:%lld mksR=0x%02X:%lu:%lld",
                 baoCaoDongCo.trangThaiBoDieuKhienDongCo.daBat,
-                baoCaoDongCo.dungPidMo ? "PID_MO" : "PID_THUAN",
+                tenCheDoCtrl(baoCaoDongCo.dungPidMo, baoCaoDongCo.dungMoSiso),
                 faultName(baoCaoDongCo.loi),
                 baoCaoDieuKhien.trangThaiXe.gocNghien_rad * doiRadSangDo,
                 baoCaoDieuKhien.gocDat_rad * doiRadSangDo,
@@ -2671,7 +2908,7 @@ void RobotApp::loop() {
             delay(1);
             return;
         }
-        Serial.printf("EN=%d fuzzy=%d ctrl=%s fault=%s ready=%s motorFault=%u last=%u "
+        Serial.printf("EN=%d fuzzy=%u ctrl=%s fault=%s ready=%s motorFault=%u last=%u "
             "theta=%.4f rate=%.4f target=%.4f x=%.4f v=%.4f STEP=%lld,%lld "
             "cmd=%.1f,%.1f K=%.2f,%.2f,%.2f serviceMax=%luus "
             "roll=%.4f accel=%.2f phase=%u epoch=%lu miss=%llu dup=%lu overlap=%lu "
@@ -2681,8 +2918,9 @@ void RobotApp::loop() {
             "i2cLast=%u regLast=0x%02X rx=%u/%u used=%u readUs=%lu readMaxUs=%lu "
             "rxErr=%u/%u usedErr=%u errReadUs=%lu hw=%s wErrRad=%.4f,%.4f wBu=%.3f,%.3f "
             "eqDeg=%.2f bench=%d vloop=%d mksL=0x%02X:%lu:%lld mksR=0x%02X:%lu:%lld\n",
-            baoCaoDongCo.trangThaiBoDieuKhienDongCo.daBat, baoCaoDongCo.dungPidMo,
-            baoCaoDongCo.dungPidMo ? "PID_MO" : "PID_THUAN",
+            baoCaoDongCo.trangThaiBoDieuKhienDongCo.daBat,
+            static_cast<unsigned>(maCheDoCtrl(baoCaoDongCo.dungPidMo, baoCaoDongCo.dungMoSiso)),
+            tenCheDoCtrl(baoCaoDongCo.dungPidMo, baoCaoDongCo.dungMoSiso),
             faultName(baoCaoDongCo.loi), faultName(loiHienTai),
             static_cast<unsigned>(baoCaoDongCo.trangThaiBoDieuKhienDongCo.loi), static_cast<unsigned>(baoCaoDongCo.ketQuaCuoi),
             baoCaoDieuKhien.trangThaiXe.gocNghien_rad, baoCaoDieuKhien.trangThaiXe.tocDoNghien_radps, baoCaoDieuKhien.gocDat_rad,
